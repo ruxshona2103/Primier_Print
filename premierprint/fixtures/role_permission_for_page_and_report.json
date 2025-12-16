@@ -1,0 +1,13 @@
+[
+ {
+  "docstatus": 0,
+  "doctype": "Role Permission for Page and Report",
+  "enable_prepared_report": 0,
+  "modified": "2025-12-15 20:41:45.643534",
+  "name": "Role Permission for Page and Report",
+  "page": null,
+  "report": null,
+  "roles": [],
+  "set_role_for": ""
+ }
+]
