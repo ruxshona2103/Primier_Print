@@ -5,6 +5,19 @@ app_description = "Premier Print"
 app_email = "munisabax2002@gmail.com"
 app_license = "mit"
 
+fixtures = [
+    "Custom Field",
+    "Property Setter",
+    "Client Script",
+    "Server Script",
+    "Print Format",
+    "Workflow",
+    "Workflow State",
+    "Workflow Action Master",
+    "Role Permission for Page and Report",
+    "Role Permission for DocType",
+]
+
 # Apps
 # ------------------
 
