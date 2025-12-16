@@ -2,6 +2,48 @@
  {
   "docstatus": 0,
   "doctype": "Workflow Action Master",
+  "modified": "2025-12-03 16:09:53.883716",
+  "name": "Send to Design",
+  "workflow_action_name": "Send to Design"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow Action Master",
+  "modified": "2025-12-03 16:14:11.837371",
+  "name": "Send to Customer Approval",
+  "workflow_action_name": "Send to Customer Approval"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow Action Master",
+  "modified": "2025-12-03 16:17:54.611117",
+  "name": "Start Production",
+  "workflow_action_name": "Start Production"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow Action Master",
+  "modified": "2025-12-03 16:18:43.710142",
+  "name": "Finish Production",
+  "workflow_action_name": "Finish Production"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow Action Master",
+  "modified": "2025-12-03 16:20:22.062723",
+  "name": "Approve QC",
+  "workflow_action_name": "Approve QC"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow Action Master",
+  "modified": "2025-12-03 16:21:16.024259",
+  "name": "Mark Delivered",
+  "workflow_action_name": "Mark Delivered"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow Action Master",
   "modified": "2025-12-15 20:41:46.656705",
   "name": "Approve",
   "workflow_action_name": "Approve"

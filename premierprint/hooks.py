@@ -15,7 +15,7 @@ fixtures = [
     "Workflow State",
     "Workflow Action Master",
     "Role Permission for Page and Report",
-    "Role Permission for DocType",
+    "Custom DocPerm"
 ]
 
 # Apps
@@ -160,7 +160,11 @@ fixtures = [
 
 # Scheduled Tasks
 # ---------------
-
+scheduler_events = {
+    "daily": [
+        "premierprint.utils.utils.update_cbu_exchange_rate"
+    ],
+}
 # scheduler_events = {
 # 	"all": [
 # 		"premierprint.tasks.all"
