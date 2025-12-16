@@ -166,12 +166,10 @@ app_license = "mit"
 # 	],
 # }
 
-# Testing
 # -------
 
 # before_tests = "premierprint.install.before_tests"
 
-# Overriding Methods
 # ------------------------------
 #
 # override_whitelisted_methods = {
