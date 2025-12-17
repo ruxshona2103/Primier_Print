@@ -165,6 +165,20 @@ scheduler_events = {
         "premierprint.utils.utils.update_cbu_exchange_rate"
     ],
 }
+
+# Client Scripts
+app_include_js = [
+    "/assets/premierprint/js/purchase_invoice.js",
+    "/assets/premierprint/js/sales_order.js"
+]
+
+# Document Events
+doc_events = {
+    "Purchase Receipt": {
+        "on_submit": "premierprint.landed_cost.auto_create_lcv.auto_create_lcv_from_receipt"
+    }
+}
+
 # scheduler_events = {
 # 	"all": [
 # 		"premierprint.tasks.all"
