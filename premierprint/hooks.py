@@ -161,7 +161,7 @@ fixtures = [
 # Scheduled Tasks
 # ---------------
 scheduler_events = {
-    "daily": [
+    "hourly": [
         "premierprint.utils.utils.update_cbu_exchange_rate"
     ],
 }
