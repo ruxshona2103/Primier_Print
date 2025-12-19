@@ -176,6 +176,12 @@ app_include_js = [
 doc_events = {
     "Purchase Receipt": {
         "on_submit": "premierprint.landed_cost.auto_create_lcv.auto_create_lcv_from_receipt"
+    },
+    "Item": {
+        "before_insert": "premierprint.naming.set_smart_id"
+    },
+    "Customer": {
+        "before_insert": "premierprint.naming.set_smart_id"
     }
 }
 
