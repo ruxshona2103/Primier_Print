@@ -2,12 +2,12 @@
  {
   "docstatus": 0,
   "doctype": "Client Script",
-  "dt": "Purchase Order",
+  "dt": "Stock Entry",
   "enabled": 1,
-  "modified": "2025-12-16 17:45:03.598740",
-  "module": "Primier Print",
-  "name": "Purchase Order",
-  "script": "frappe.ui.form.on(\"Purchase Order\", {\n    before_save(frm) {\n        (frm.doc.items || []).forEach(row => {\n            if (!row.schedule_date) {\n                row.schedule_date = frappe.datetime.get_today();\n            }\n        });\n    },\n\n    refresh(frm) {\n        if (frm.fields_dict.items?.grid) {\n            const grid = frm.fields_dict.items.grid;\n\n            // faqat yashiramiz\n            grid.update_docfield_property(\"schedule_date\", \"hidden\", 1);\n            grid.update_docfield_property(\"schedule_date\", \"reqd\", 0);\n\n            grid.refresh();\n        }\n    }\n});\n\n",
+  "modified": "2025-12-19 16:56:18.771414",
+  "module": null,
+  "name": "Stock Entry - hide options",
+  "script": "frappe.ui.form.on('Stock Entry', {\n    refresh: function(frm) {\n        // Faqat biz xohlagan variantlarni qoldiramiz\n        // Boshqa hamma narsani filtrlab tashlaymiz\n        frm.set_query('stock_entry_type', function() {\n            return {\n                filters: [\n                    ['Stock Entry Type', 'name', 'in', ['Расход по заказу', 'Услуги по заказу']]\n                ]\n            };\n        });\n    }\n});",
   "view": "Form"
  },
  {
@@ -15,10 +15,21 @@
   "doctype": "Client Script",
   "dt": "Stock Entry",
   "enabled": 1,
-  "modified": "2025-12-18 12:34:34.958623",
+  "modified": "2025-12-21 11:20:16.842014",
   "module": null,
-  "name": "Stock Entry - Item Auto Add",
-  "script": "frappe.ui.form.on('Stock Entry', {\n    custom_sales_order: function(frm) {\n        // Sales Order o'zgarganda item field tozalash\n        frm.set_value('custom_sales_order_item', '');\n        frm.refresh_field('custom_sales_order_item');\n    },\n    \n    custom_sales_order_item: function(frm) {\n        if (frm.doc.custom_sales_order_item) {\n            // Backend-dan item ma'lumotini olish\n            frappe.call({\n                method: 'premierprint.utils.stock_entry.get_sales_order_item_details',\n                args: {\n                    sales_order_item: frm.doc.custom_sales_order_item\n                },\n                callback: function(r) {\n                    if (r.message) {\n                        let item = r.message;\n                        \n                        // Duplicate check\n                        let exists = false;\n                        $.each(frm.doc.items || [], function(i, row) {\n                            if (row.item_code === item.item_code) {\n                                exists = true;\n                                return false;\n                            }\n                        });\n                        \n                        if (exists) {\n                            frappe.msgprint({\n                                title: __('Allaqachon Mavjud'),\n                                message: __('Bu item jadvalda bor'),\n                                indicator: 'orange'\n                            });\n                            frm.set_value('custom_sales_order_item', '');\n                            return;\n                        }\n                        \n                        // Items jadvaliga qo'shish\n                        let row = frm.add_child('items');\n                        row.item_code = item.item_code;\n                        row.item_name = item.item_name;\n                        row.description = item.description;\n                        row.qty = item.qty;\n                        row.uom = item.uom;\n                        row.stock_uom = item.stock_uom;\n                        row.conversion_factor = item.conversion_factor;\n                        row.s_warehouse = item.warehouse;\n                        row.basic_rate = item.rate;\n                        \n                        frm.refresh_field('items');\n                        \n                        frappe.show_alert({\n                            message: __('✓ Item qo\\'shildi'),\n                            indicator: 'green'\n                        }, 2);\n                        \n                        // Field tozalash\n                        frm.set_value('custom_sales_order_item', '');\n                    }\n                },\n                error: function(err) {\n                    frappe.msgprint({\n                        title: __('Xatolik'),\n                        message: err.message,\n                        indicator: 'red'\n                    });\n                }\n            });\n        }\n    }\n});",
+  "name": "stock entry - add item",
+  "script": "frappe.ui.form.on('Stock Entry', {\n    // 1. FORM OCHILGANDA YOKI YANGILANGANDA\n    refresh: function(frm) {\n        // Dropdown filtrini o'rnatamiz\n        frm.set_query(\"custom_sales_order_item\", function() {\n            // Hozirgi tanlangan Sales Orderni olamiz\n            let so_id = frm.doc.custom_sales_order; // <-- MUHIM O'ZGARISH\n\n            if (!so_id) {\n                return { filters: { \"parent\": \"null\" } };\n            }\n\n            return {\n                // Python funksiya manzili\n                // DIQQAT: Agar sening papkang 'apps/premierprint/premierprint/utils/...' bo'lsa:\n                query: \"premierprint.utils.stock_entry.get_sales_order_items_query\",\n                filters: {\n                    \"sales_order\": so_id\n                }\n            };\n        });\n    },\n\n    // 2. SALES ORDER O'ZGARSA\n    custom_sales_order: function(frm) {\n        // Item maydonini tozalaymiz\n        frm.set_value(\"custom_sales_order_item\", \"\");\n        frm.clear_table(\"items\");\n        frm.refresh_field(\"items\");\n        \n        // Filtr avtomatik yangilanadi (chunki set_query da frm.doc.custom_sales_order bor)\n    },\n\n    // 3. ITEM TANLANGANDA\n    custom_sales_order_item: function(frm) {\n        if (frm.doc.custom_sales_order_item) {\n            \n            frm.clear_table(\"items\");\n            frm.refresh_field(\"items\");\n\n            frappe.call({\n                // Python funksiya manzili (2 qavatli papka strukturasi uchun)\n                method: \"premierprint.utils.stock_entry.get_bom_materials\",\n                args: {\n                    sales_order_item_id: frm.doc.custom_sales_order_item\n                },\n                freeze: true,\n                freeze_message: __(\"BOM yuklanmoqda...\"),\n                callback: function(r) {\n                    if (r.message && r.message.length > 0) {\n                        r.message.forEach(function(row) {\n                            let child = frm.add_child(\"items\");\n                            frappe.model.set_value(child.doctype, child.name, row);\n                        });\n                        frm.refresh_field(\"items\");\n                        frappe.show_alert({message: __(\"Materiallar qo'shildi\"), indicator: 'green'});\n                    } else {\n                        frappe.msgprint({\n                            title: __(\"Diqqat\"),\n                            message: __(\"Tanlangan mahsulot uchun BOM topilmadi.\"),\n                            indicator: 'orange'\n                        });\n                    }\n                }\n            });\n        }\n    }\n});",
+  "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Purchase Order",
+  "enabled": 1,
+  "modified": "2025-12-16 17:45:03.598740",
+  "module": "Primier Print",
+  "name": "Purchase Order",
+  "script": "frappe.ui.form.on(\"Purchase Order\", {\n    before_save(frm) {\n        (frm.doc.items || []).forEach(row => {\n            if (!row.schedule_date) {\n                row.schedule_date = frappe.datetime.get_today();\n            }\n        });\n    },\n\n    refresh(frm) {\n        if (frm.fields_dict.items?.grid) {\n            const grid = frm.fields_dict.items.grid;\n\n            // faqat yashiramiz\n            grid.update_docfield_property(\"schedule_date\", \"hidden\", 1);\n            grid.update_docfield_property(\"schedule_date\", \"reqd\", 0);\n\n            grid.refresh();\n        }\n    }\n});\n\n",
   "view": "Form"
  }
 ]
