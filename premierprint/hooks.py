@@ -15,7 +15,8 @@ fixtures = [
     "Workflow State",
     "Workflow Action Master",
     "Role Permission for Page and Report",
-    "Custom DocPerm"
+    "Custom DocPerm",
+    "Currency Exchange"
 ]
 
 # Apps
