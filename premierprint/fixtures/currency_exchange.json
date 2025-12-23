@@ -1,1 +1,50 @@
-[]
+[
+ {
+  "date": "2025-12-22",
+  "docstatus": 0,
+  "doctype": "Currency Exchange",
+  "exchange_rate": 11996.14,
+  "for_buying": 1,
+  "for_selling": 1,
+  "from_currency": "USD",
+  "modified": "2025-12-22 11:00:30.733625",
+  "name": "2025-12-22-USD-UZS-Selling-Buying",
+  "to_currency": "UZS"
+ },
+ {
+  "date": "2025-12-22",
+  "docstatus": 0,
+  "doctype": "Currency Exchange",
+  "exchange_rate": 8.336e-05,
+  "for_buying": 1,
+  "for_selling": 1,
+  "from_currency": "UZS",
+  "modified": "2025-12-22 11:00:30.773669",
+  "name": "2025-12-22-UZS-USD-Selling-Buying",
+  "to_currency": "USD"
+ },
+ {
+  "date": "2025-12-23",
+  "docstatus": 0,
+  "doctype": "Currency Exchange",
+  "exchange_rate": 12010.43,
+  "for_buying": 1,
+  "for_selling": 1,
+  "from_currency": "USD",
+  "modified": "2025-12-23 10:36:18.400079",
+  "name": "2025-12-23-USD-UZS-Selling-Buying",
+  "to_currency": "UZS"
+ },
+ {
+  "date": "2025-12-23",
+  "docstatus": 0,
+  "doctype": "Currency Exchange",
+  "exchange_rate": 8.3261e-05,
+  "for_buying": 1,
+  "for_selling": 1,
+  "from_currency": "UZS",
+  "modified": "2025-12-23 10:36:18.451972",
+  "name": "2025-12-23-UZS-USD-Selling-Buying",
+  "to_currency": "USD"
+ }
+]
