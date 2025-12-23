@@ -173,7 +173,8 @@ scheduler_events = {
 # Client Scripts
 app_include_js = [
     "/assets/premierprint/js/purchase_invoice.js",
-    "/assets/premierprint/js/sales_order.js"
+    "/assets/premierprint/js/sales_order.js",
+	"/assets/premierprint/js/global_modal_fix.js"
 ]
 
 # Document Events
