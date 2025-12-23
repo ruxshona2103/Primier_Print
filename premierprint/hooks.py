@@ -19,6 +19,7 @@ fixtures = [
     "Currency Exchange",
 	"Stock Entry Type",
 	"Warehouse",
+	"Company"
 ]
 
 # Apps
