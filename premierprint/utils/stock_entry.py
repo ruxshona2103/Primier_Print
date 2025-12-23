@@ -60,6 +60,10 @@ def get_bom_materials(sales_order_item_id):
 		qty_per_unit = item.qty / bom_doc.quantity
 		total_qty = qty_per_unit * so_item.qty
 
+		# Ombor nomiga qarab Cost Center aniqlash
+		warehouse = item.source_warehouse or so_item.warehouse
+		cost_center = get_cost_center_from_warehouse(warehouse)
+
 		raw_materials.append({
 			"item_code": item.item_code,
 			"item_name": item.item_name,
@@ -68,8 +72,29 @@ def get_bom_materials(sales_order_item_id):
 			"uom": item.uom,
 			"stock_uom": item.stock_uom,
 			"conversion_factor": item.conversion_factor,
-			"s_warehouse": item.source_warehouse or so_item.warehouse,
-			"cost_center": "100 - Poligrafiya Department"  # Yoki default
+			"s_warehouse": warehouse,
+			"cost_center": cost_center
 		})
 
 	return raw_materials
+
+
+def get_cost_center_from_warehouse(warehouse):
+	"""Ombor nomiga qarab Cost Center aniqlash"""
+	if not warehouse:
+		return None
+
+	warehouse_name = warehouse.lower()
+
+	# Ombor nomida "poli" so'zi bo'lsa -> 100 (Poligrafiya)
+	if "poli" in warehouse_name:
+		return "100 - Poligrafiya Department"
+	# Ombor nomida "reklama" so'zi bo'lsa -> 200 (Reklama)
+	elif "reklama" in warehouse_name:
+		return "200 - Reklama Department"
+	# Ombor nomida "suvenir" so'zi bo'lsa -> 300 (Suvenir)
+	elif "suvenir" in warehouse_name:
+		return "300 - Suvenir Department"
+
+	# Default
+	return "100 - Poligrafiya Department"
