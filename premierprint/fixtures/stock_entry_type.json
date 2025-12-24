@@ -79,5 +79,32 @@
   "modified": "2025-12-18 21:40:37.979779",
   "name": "Material Issue",
   "purpose": "Material Issue"
+ },
+ {
+  "add_to_transit": 0,
+  "docstatus": 0,
+  "doctype": "Stock Entry Type",
+  "is_standard": 0,
+  "modified": "2025-12-24 08:08:41.161240",
+  "name": "Расход по заказу",
+  "purpose": "Material Issue"
+ },
+ {
+  "add_to_transit": 0,
+  "docstatus": 0,
+  "doctype": "Stock Entry Type",
+  "is_standard": 0,
+  "modified": "2025-12-24 08:08:41.161240",
+  "name": "Услуги по заказу",
+  "purpose": "Material Receipt"
+ },
+ {
+  "add_to_transit": 0,
+  "docstatus": 0,
+  "doctype": "Stock Entry Type",
+  "is_standard": 0,
+  "modified": "2025-12-24 08:08:41.161240",
+  "name": "Перемещение",
+  "purpose": "Material Transfer"
  }
 ]
