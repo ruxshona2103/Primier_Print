@@ -17,9 +17,7 @@ fixtures = [
     "Role Permission for Page and Report",
     "Custom DocPerm",
     "Currency Exchange",
-	"Stock Entry Type",
-	"Warehouse",
-	"Company"
+
 ]
 
 # Apps
