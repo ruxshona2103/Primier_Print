@@ -17,7 +17,6 @@ fixtures = [
     "Role Permission for Page and Report",
     "Custom DocPerm",
     "Currency Exchange",
-
 ]
 
 # Apps
@@ -185,7 +184,10 @@ doc_events = {
     },
     "Customer": {
         "before_insert": "premierprint.naming.set_smart_id"
-    }
+    },
+	"Stock Entry": {
+		"on_submit": "premierprint.premierprint.utils.stock_entry.on_submit"
+	}
 }
 
 # scheduler_events = {
