@@ -688,7 +688,6 @@ def hide_from_sub_company_field():
 
 
 def create_stock_entry_client_script():
-	"""Yangi Stock Entry Client Script yaratish"""
 	print("📝 [3/4] Yangi Client Script yaratish...")
 
 	script_name = "Stock Entry - Professional v3.0"
