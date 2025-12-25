@@ -1,0 +1,24 @@
+import frappe
+
+def set_custom_id(doc, method):
+    # Terminalda tekshirish uchun yozuv chiqaramiz
+    print(f"--- KOD ISHLADI: {doc.doctype} uchun ---")
+
+    # Agar maydonda allaqachon qiymat bo'lsa, tegmaymiz
+    if doc.custom_id:
+        return
+
+    # Doctype nomini olamiz
+    doctype = doc.doctype
+    
+    # Bazadan eng katta raqamni qidiramiz
+    max_id = frappe.db.sql(f"""
+        SELECT MAX(custom_id) FROM `tab{doctype}`
+    """)[0][0]
+    
+    # Agar bazada hech narsa bo'lmasa, 0 deb olamiz
+    if not max_id:
+        max_id = 0
+
+    # Yangi raqam beramiz
+    doc.custom_id = max_id + 1

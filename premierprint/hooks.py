@@ -143,9 +143,10 @@ fixtures = [
 # ---------------
 # Override standard doctype classes
 
-# override_doctype_class = {
-# 	"ToDo": "custom_app.overrides.CustomToDo"
-# }
+override_doctype_class = {
+	"Item": "premierprint.overrides.item.CustomItem",
+	"Customer": "premierprint.overrides.customer.CustomCustomer"
+}
 
 # Document Events
 # ---------------
@@ -177,8 +178,14 @@ doctype_js = {
     "Purchase Invoice": "public/js/purchase_invoice.js" # Buni qo'sh
 }
 
+# DocType specific JS
+doctype_js = {
+    "Item": "public/js/item.js"
+}
+
 # Document Events
 doc_events = {
+<<<<<<< HEAD
 	"Purchase Invoice": {
         "on_submit": "premierprint.premierprint.api.create_lcv_from_pi"},
     "Item": {
@@ -186,6 +193,10 @@ doc_events = {
     },
     "Customer": {
         "before_insert": "premierprint.naming.set_smart_id"
+=======
+    "Purchase Receipt": {
+        "on_submit": "premierprint.landed_cost.auto_create_lcv.auto_create_lcv_from_receipt"
+>>>>>>> 12b06f2 (Add auto-increment naming for Item and Customer)
     },
 	"Stock Entry": {
 		"on_submit": "premierprint.premierprint.utils.stock_entry.on_submit"

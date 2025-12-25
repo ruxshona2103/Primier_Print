@@ -59,3 +59,11 @@ def update_cbu_exchange_rate():
 	except Exception as e:
 		frappe.log_error(f"Valyuta xatosi: {str(e)}", "Auto Currency Update")
 		print(f"Xatolik: {str(e)}")
+
+
+
+
+
+
+
+
