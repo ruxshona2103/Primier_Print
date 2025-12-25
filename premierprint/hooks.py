@@ -173,12 +173,15 @@ app_include_js = [
     "/assets/premierprint/js/sales_order.js",
 	"/assets/premierprint/js/global_modal_fix.js"
 ]
+doctype_js = {
+    "Purchase Order": "public/js/purchase_order.js",   # Bu oldindan bor edi
+    "Purchase Invoice": "public/js/purchase_invoice.js" # Buni qo'sh
+}
 
 # Document Events
 doc_events = {
-    "Purchase Receipt": {
-        "on_submit": "premierprint.landed_cost.auto_create_lcv.auto_create_lcv_from_receipt"
-    },
+	"Purchase Invoice": {
+        "on_submit": "premierprint.premierprint.api.create_lcv_from_pi"},
     "Item": {
         "before_insert": "premierprint.naming.set_smart_id"
     },
