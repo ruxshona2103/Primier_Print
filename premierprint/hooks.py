@@ -146,7 +146,14 @@ fixtures = [
 override_doctype_class = {
 	"Item": "premierprint.overrides.item.CustomItem",
 	"Customer": "premierprint.overrides.customer.CustomCustomer",
-	"Sales Order": "premierprint.overrides.sales_order.CustomSalesOrder"
+	"Sales Order": "premierprint.overrides.sales_order.CustomSalesOrder",
+	"Purchase Receipt": "premierprint.overrides.purchase_receipt.CustomPurchaseReceipt",
+	"Stock Entry": "premierprint.overrides.stock_entry.CustomStockEntry",
+	"Payment Entry": "premierprint.overrides.payment_entry.CustomPaymentEntry",
+	"Sales Invoice": "premierprint.overrides.sales_invoice.CustomSalesInvoice",
+	"Purchase Order": "premierprint.overrides.purchase_order.CustomPurchaseOrder",
+	"Purchase Invoice": "premierprint.overrides.purchase_invoice.CustomPurchaseInvoice",
+	"Delivery Note": "premierprint.overrides.delivery_note.CustomDeliveryNote"
 }
 
 # Document Events
