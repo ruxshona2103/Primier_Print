@@ -1,29 +1,31 @@
 frappe.ui.form.on('Purchase Invoice', {
     // 1. FORM YUKLANGANDA
     refresh: function(frm) {
+        // Faqat yangi (Draft) va transport narxi kiritilmagan bo'lsa, PO dan tortamiz
         if (frm.doc.docstatus === 0 && !frm.doc.custom_transport_cost) {
             fetch_details_from_po(frm);
         }
     },
 
-    // 2. LCV VALYUTASI O'ZGARSA -> KURSNI TOPIB KELISH (YANGI)
+    // 2. LCV VALYUTASI O'ZGARSA -> KURSNI YANGILASH
     custom_lcv_currency: function(frm) {
         get_lcv_exchange_rate(frm);
     },
 
-    // 3. POSTING DATE O'ZGARSA -> KURSNI YANGILASH (YANGI)
+    // 3. POSTING DATE O'ZGARSA -> KURSNI YANGILASH
     posting_date: function(frm) {
         if (frm.doc.custom_lcv_currency) {
             get_lcv_exchange_rate(frm);
         }
     },
 
-    // 4. SUBMIT QILISHDAN OLDIN
+    // 4. SUBMIT QILISHDAN OLDIN (Dialog)
     before_submit: function(frm) {
         return new Promise((resolve, reject) => {
             let items_html = '';
             let has_po_pr = false;
 
+            // Itemlarni tekshirish
             $.each(frm.doc.items || [], function(i, item) {
                 if (item.purchase_order || item.purchase_receipt) {
                     has_po_pr = true;
@@ -36,8 +38,13 @@ frappe.ui.form.on('Purchase Invoice', {
                 }
             });
 
-            if (!has_po_pr) { resolve(); return; }
+            // Agar PO/PR ga bog'liq item bo'lmasa, dialogsiz o'tkazvoramiz
+            if (!has_po_pr) {
+                resolve();
+                return;
+            }
 
+            // Tasdiqlash oynasi
             let d = new frappe.ui.Dialog({
                 title: __('Narxlarni Tasdiqlang'),
                 indicator: 'blue',
@@ -56,8 +63,18 @@ frappe.ui.form.on('Purchase Invoice', {
                 }],
                 primary_action_label: __('✅ Ha, Tasdiqlayman'),
                 secondary_action_label: __('❌ Yo\'q, O\'zgartiraman'),
-                primary_action: () => { d.hide(); resolve(); },
-                secondary_action: () => { d.hide(); reject(); frappe.show_alert({message: __('Narxlarni o\'zgartiring'), indicator: 'orange'}, 5); }
+                primary_action: () => {
+                    d.hide();
+                    resolve();
+                },
+                secondary_action: () => {
+                    d.hide();
+                    reject();
+                    frappe.show_alert({
+                        message: __('Narxlarni o\'zgartiring'),
+                        indicator: 'orange'
+                    }, 5);
+                }
             });
             d.show();
             d.$wrapper.find('.modal-header .close').on('click', () => reject());
@@ -67,28 +84,24 @@ frappe.ui.form.on('Purchase Invoice', {
 
 // --- YORDAMCHI FUNKSIYALAR ---
 
-// A. Kursni olish funksiyasi (ERPNext yadrosidan foydalanadi)
-// ... (Refresh va Before Submit qismlari o'zgarishsiz qoladi) ...
-
-// --- YORDAMCHI FUNKSIYALAR ---
-
+// A. Kursni olish funksiyasi (Universal)
 function get_lcv_exchange_rate(frm) {
     if (!frm.doc.custom_lcv_currency || !frm.doc.company) return;
 
-    // Kompaniyaning asosiy valyutasini olamiz (Bu safar USD)
+    // Kompaniyaning asosiy valyutasini olamiz (Senda USD)
     frappe.db.get_value('Company', frm.doc.company, 'default_currency', (r) => {
         let company_currency = r.default_currency; // USD
         let lcv_currency = frm.doc.custom_lcv_currency; // Masalan UZS
 
+        // Agar valyutalar bir xil bo'lsa
         if (lcv_currency == company_currency) {
             frm.set_value('custom_lcv_exchange_rate', 1.0);
             return;
         }
 
-        // SENIOR TRICK:
-        // Agar kompaniya USD bo'lsa va biz UZS tanlasak,
-        // bizga "1 USD necha so'm?" degan kurs kerak (masalan 12800).
-        // Shuning uchun 'from' ga Base, 'to' ga LCV currency beramiz.
+        // KURS HISOBLASH (SENIOR LOGIC)
+        // Senga "1 USD necha so'm?" degan kurs kerak (Masalan: 12800).
+        // Shuning uchun from_currency ga USD (Base), to_currency ga UZS (LCV) beramiz.
 
         frappe.call({
             method: "erpnext.setup.utils.get_exchange_rate",
@@ -111,10 +124,7 @@ function get_lcv_exchange_rate(frm) {
     });
 }
 
-// ... (fetch_details_from_po funksiyasi o'zgarishsiz qoladi) ...
-}
-
-// B. PO dan ma'lumot olish funksiyasi
+// B. PO dan Transport narxini olish funksiyasi
 function fetch_details_from_po(frm) {
     let po_name = null;
     if (frm.doc.items && frm.doc.items.length > 0) {
@@ -132,6 +142,10 @@ function fetch_details_from_po(frm) {
             (r) => {
                 if (r && r.custom_transport_cost) {
                     frm.set_value('custom_transport_cost', r.custom_transport_cost);
+                    frappe.show_alert({
+                        message: __('Purchase Orderdan transport narxi yuklandi: ' + r.custom_transport_cost),
+                        indicator: 'green'
+                    });
                 }
             }
         );
