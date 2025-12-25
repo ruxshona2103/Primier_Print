@@ -194,7 +194,9 @@ doctype_js = {
 doc_events = {
 	"Purchase Invoice": {
         "on_submit": ["premierprint.premierprint.api.create_lcv_from_pi",
-					  "premierprint.doctype.purchase_invoice.auto_create_lcv_for_price_variance"]},
+					  "premierprint.doctype.purchase_invoice.auto_create_lcv_for_price_variance"],
+		"on_cancel": "premierprint.doctype.purchase_invoice.cancel_linked_lcvs"
+	},
     "Item": {
         "before_insert": "premierprint.naming.set_smart_id"
     },
