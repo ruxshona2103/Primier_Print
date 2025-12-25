@@ -183,28 +183,24 @@ app_include_js = [
 ]
 doctype_js = {
     "Purchase Order": "public/js/purchase_order.js",   # Bu oldindan bor edi
-    "Purchase Invoice": "public/js/purchase_invoice.js" # Buni qo'sh
+    "Purchase Invoice": "public/js/purchase_invoice.js", # Buni qo'sh
+						"Item": "public/js/item.js"
 }
 
 # DocType specific JS
-doctype_js = {
-    "Item": "public/js/item.js"
-}
+
 
 # Document Events
 doc_events = {
-<<<<<<< HEAD
 	"Purchase Invoice": {
         "on_submit": "premierprint.premierprint.api.create_lcv_from_pi"},
     "Item": {
         "before_insert": "premierprint.naming.set_smart_id"
     },
     "Customer": {
-        "before_insert": "premierprint.naming.set_smart_id"
-=======
+        "before_insert": "premierprint.naming.set_smart_id"},
     "Purchase Receipt": {
         "on_submit": "premierprint.landed_cost.auto_create_lcv.auto_create_lcv_from_receipt"
->>>>>>> 12b06f2 (Add auto-increment naming for Item and Customer)
     },
 	"Stock Entry": {
 		"on_submit": "premierprint.premierprint.utils.stock_entry.on_submit"
