@@ -176,6 +176,8 @@ scheduler_events = {
     ],
 }
 
+after_migrate = "premierprint.setup_master_data.setup_all"
+
 # Client Scripts
 app_include_js = [
     "/assets/premierprint/js/sales_order.js",
