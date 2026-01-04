@@ -9,22 +9,22 @@ def get_category_from_series(naming_series, doctype_code):
     naming_series dan kategoriya kodini olish
 
     Args:
-        naming_series: Series string (e.g., "Рpr-", "Пse-")
+        naming_series: Series string (e.g., "PR-", "PSE-")
         doctype_code: DocType kodi (e.g., "pr", "se")
 
     Returns:
         Category code (e.g., "Рpr", "Пse")
     """
     if not naming_series:
-        return f"Р{doctype_code}"
+        return f"P{doctype_code}"
 
-    # naming_series format: "Рpr-", "Пpr-", "Сpr-"
-    # Extract: Рpr, Пpr, Сpr
+    # naming_series format: "PR-", "PPR-", "PS-"
+    # Extract: PR, PPR, PS
     series = naming_series.replace("-", "").replace("YYYY", "").replace(".", "").strip()
     if series:
         return series
 
-    return f"Р{doctype_code}"
+    return f"P{doctype_code}"
 
 
 def get_item_codes(doc):
