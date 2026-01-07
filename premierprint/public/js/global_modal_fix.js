@@ -7,6 +7,11 @@
      */
 
     const neutralizer = (e) => {
+        // Link field dropdownlarini ignore qilish
+        if (e.target.closest('.awesomplete') || e.target.closest('.link-field')) {
+            return; // Link field'ni ishlashiga ruxsat beramiz
+        }
+
         // Modal ichidagi linkni topamiz
         const link = e.target.closest('.modal-body a');
 
@@ -41,7 +46,8 @@
     // Vizual qism: Foydalanuvchi linkni link deb o'ylamasligi kerak
     const style = document.createElement('style');
     style.innerHTML = `
-        .modal-body a[data-doctype], .modal-body a {
+        .modal-body a[data-doctype]:not(.awesomplete a):not(.link-field a),
+        .modal-body a:not(.awesomplete a):not(.link-field a) {
             color: #212529 !important;
             text-decoration: none !important;
             cursor: pointer !important;
