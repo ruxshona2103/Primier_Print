@@ -148,7 +148,6 @@ override_doctype_class = {
 	"Customer": "premierprint.overrides.customer.CustomCustomer",
 	"Sales Order": "premierprint.overrides.sales_order.CustomSalesOrder",
 	"Stock Entry": "premierprint.overrides.stock_entry.CustomStockEntry",
-	"Payment Entry": "premierprint.overrides.payment_entry.CustomPaymentEntry",
 	"Sales Invoice": "premierprint.overrides.sales_invoice.CustomSalesInvoice",
 	"Delivery Note": "premierprint.overrides.delivery_note.CustomDeliveryNote"
 }
@@ -183,7 +182,8 @@ app_include_js = [
 doctype_js = {
     "Purchase Order": "public/js/purchase_order.js",   # Bu oldindan bor edi
     "Purchase Invoice": "public/js/purchase_invoice.js", # Buni qo'sh
-						"Item": "public/js/item.js"
+						"Item": "public/js/item.js",
+	"Payment Entry": "public/js/payment_entry.js"
 }
 
 # DocType specific JS
@@ -202,7 +202,7 @@ doc_events = {
     "Customer": {
         "before_insert": "premierprint.naming.set_smart_id"},
 	"Stock Entry": {
-		"on_submit": "premierprint.premierprint.utils.stock_entry.on_submit"
+		"on_submit": "premierprint.utils.stock_entry.on_submit"
 	}
 }
 
