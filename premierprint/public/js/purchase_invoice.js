@@ -19,70 +19,247 @@ frappe.ui.form.on('Purchase Invoice', {
         }
     },
 
-    // 4. SUBMIT QILISHDAN OLDIN (Dialog)
+    // 4. SUBMIT QILISHDAN OLDIN (Narxni Tasdiqlash Dialog)
+    // Dialog HAR SAFAR ochiladi - narxlarni tasdiqlash uchun
     before_submit: function(frm) {
         return new Promise((resolve, reject) => {
-            let items_html = '';
-            let has_po_pr = false;
-
-            // Itemlarni tekshirish
+            // PO/PR ga bog'liq itemlarni topish
+            let items_with_po_pr = [];
             $.each(frm.doc.items || [], function(i, item) {
                 if (item.purchase_order || item.purchase_receipt) {
-                    has_po_pr = true;
-                    items_html += `
-                        <tr>
-                            <td style="padding: 8px; border-bottom: 1px solid #eee;">${item.item_name}</td>
-                            <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;"><b>${format_currency(item.rate, frm.doc.currency)}</b></td>
-                            <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">${format_currency(item.amount, frm.doc.currency)}</td>
-                        </tr>`;
+                    items_with_po_pr.push(item);
                 }
             });
 
-            // Agar PO/PR ga bog'liq item bo'lmasa, dialogsiz o'tkazvoramiz
-            if (!has_po_pr) {
+            // Agar PO/PR ga bog'liq item bo'lmasa, dialogsiz o'tkazamiz
+            if (items_with_po_pr.length === 0) {
                 resolve();
                 return;
             }
 
-            // Tasdiqlash oynasi
-            let d = new frappe.ui.Dialog({
-                title: __('Narxlarni Tasdiqlang'),
-                indicator: 'blue',
-                fields: [{
-                    fieldtype: 'HTML',
-                    options: `
-                        <div style="margin-bottom: 20px;">
-                            <h4 style="margin-top: 0; color: #2490ef;">📋 Joriy Narxlar</h4>
-                            <p style="color: #555;">PO/PR dan kelgan narxlar bilan davom etasizmi?</p>
-                            <table style="width: 100%; border-collapse: collapse;">
-                                <thead><tr style="background: #f5f7fa;"><th style="padding: 10px;">Item</th><th style="padding: 10px; text-align: right;">Narx</th><th style="padding: 10px; text-align: right;">Summa</th></tr></thead>
-                                <tbody>${items_html}</tbody>
-                                <tfoot><tr style="background: #f5f7fa; font-weight: bold;"><td colspan="2" style="padding: 12px;">JAMI:</td><td style="padding: 12px; text-align: right;">${format_currency(frm.doc.grand_total, frm.doc.currency)}</td></tr></tfoot>
-                            </table>
-                        </div>`
-                }],
-                primary_action_label: __('✅ Ha, Tasdiqlayman'),
-                secondary_action_label: __('❌ Yo\'q, O\'zgartiraman'),
-                primary_action: () => {
-                    d.hide();
-                    resolve();
-                },
-                secondary_action: () => {
-                    d.hide();
-                    reject();
-                    frappe.show_alert({
-                        message: __('Narxlarni o\'zgartiring'),
-                        indicator: 'orange'
-                    }, 5);
-                }
-            });
-            d.show();
-            d.$wrapper.find('.modal-header .close').on('click', () => reject());
+            // Dialog uchun data tayyorlash
+            // Joriy narxlarni ko'rsatadi (foydalanuvchi o'zgartirgan bo'lishi mumkin)
+            let dialog_data = items_with_po_pr.map(item => ({
+                idx: item.idx,
+                item_code: item.item_code,
+                item_name: item.item_name,
+                qty: item.qty,
+                current_rate: item.rate,  // Hozirgi narx (o'zgargan bo'lishi mumkin)
+                current_amount: item.amount,
+                new_rate: item.rate,  // Default qiymati joriy narx
+                new_amount: item.amount  // Default qiymati joriy summa
+            }));
+
+            // Narxni Tasdiqlash Dialog - har safar ochiladi
+            show_price_verification_dialog(frm, dialog_data, resolve, reject);
         });
     }
 });
 
 // --- YORDAMCHI FUNKSIYALAR ---
+
+// Narxni Tasdiqlash Dialog
+function show_price_verification_dialog(frm, dialog_data, resolve, reject) {
+    let d = new frappe.ui.Dialog({
+        title: __('Narxlarni Tasdiqlash'),
+        indicator: 'blue',
+        size: 'large',  // Kattaroq dialog
+        fields: [
+            {
+                fieldtype: 'HTML',
+                options: `
+                    <div style="margin-bottom: 15px;">
+                        <h4 style="margin: 0 0 10px 0; color: #2490ef;">📋 Narxlarni Tekshiring</h4>
+                        <p style="color: #666; margin: 0;">
+                            Agar narx o'zgargan bo'lsa, yangi narxni kiriting va "Tasdiqlash va Submit" bosing.
+                            Aks holda, "Yo'q, O'zgartiraman" tugmasini bosing.
+                        </p>
+                    </div>
+                `
+            },
+            {
+                fieldtype: 'HTML',
+                fieldname: 'items_table',
+                options: generate_items_table_html(dialog_data, frm.doc.currency)
+            }
+        ],
+        primary_action_label: __('✅ Tasdiqlash va Submit'),
+        secondary_action_label: __('❌ Yo\'q, O\'zgartiraman'),
+        primary_action: () => {
+            // Jadvaldagi yangi narxlarni olish va o'zgarishni tekshirish
+            let updated_items = [];
+            let is_changed = false;
+
+            dialog_data.forEach((item, index) => {
+                let new_rate_input = d.$wrapper.find(`#new_rate_${index}`);
+                let new_rate = parseFloat(new_rate_input.val()) || item.current_rate;
+
+                // Narx o'zgarganini tekshirish
+                if (Math.abs(new_rate - item.current_rate) > 0.001) {
+                    is_changed = true;
+                }
+
+                updated_items.push({
+                    idx: item.idx,
+                    new_rate: new_rate
+                });
+            });
+
+            // Formadagi narxlarni yangilash
+            updated_items.forEach(updated_item => {
+                let form_item = frm.doc.items.find(i => i.idx === updated_item.idx);
+                if (form_item) {
+                    form_item.rate = updated_item.new_rate;
+                    // Recalculate amount
+                    form_item.amount = flt(form_item.rate) * flt(form_item.qty);
+                }
+            });
+
+            // Refresh items table
+            frm.refresh_field('items');
+
+            // Calculate totals
+            frm.script_manager.trigger("calculate_taxes_and_totals");
+
+            // Dialog yopish
+            d.hide();
+
+            // Submit qilish - narx o'zgargan bo'lsa avval Save
+            setTimeout(() => {
+                if (is_changed) {
+                    // Narx o'zgargan: Avval Save, keyin reload va Submit
+                    frm.save().then(() => {
+                        // Save muvaffaqiyatli - hujjatni qayta yuklash
+                        return frm.reload_doc();
+                    }).then(() => {
+                        // Hujjat qayta yuklandi - endi Submit qilish
+                        return frm.submit();
+                    }).then(() => {
+                        resolve();
+                    }).catch(err => {
+                        frappe.msgprint({
+                            title: __('Xatolik'),
+                            message: __('Submit qilishda xatolik: {0}', [err.message || err]),
+                            indicator: 'red'
+                        });
+                        reject(err);
+                    });
+                } else {
+                    // Narx o'zgarmagan: To'g'ridan-to'g'ri Submit
+                    frm.submit().then(() => {
+                        resolve();
+                    }).catch(err => {
+                        frappe.msgprint({
+                            title: __('Xatolik'),
+                            message: __('Submit qilishda xatolik: {0}', [err.message || err]),
+                            indicator: 'red'
+                        });
+                        reject(err);
+                    });
+                }
+            }, 500);
+        },
+        secondary_action: () => {
+            // Dialogni yopish - foydalanuvchi formada narxlarni o'zgartirishi mumkin
+            d.hide();
+            frappe.show_alert({
+                message: __('Narxlarni formda o\'zgartiring va qayta Submit qiling'),
+                indicator: 'blue'
+            }, 5);
+
+            // Keyingi submit da dialog qayta ochiladi
+        }
+    });
+
+    // Dialog ko'rsatish
+    d.show();
+
+    // X tugmasi bosilganda - dialog yopiladi, keyingi submit da qayta ochiladi
+    d.$wrapper.find('.modal-header .close').on('click', () => {
+        frappe.show_alert({
+            message: __('Dialog yopildi. Narxlarni formda o\'zgartiring va qayta Submit qiling'),
+            indicator: 'blue'
+        }, 5);
+    });
+
+    // Narx o'zgartirilganda summa avtomatik hisoblash
+    setTimeout(() => {
+        d.$wrapper.find('.new-rate-input').on('input', function() {
+            let index = $(this).data('index');
+            let qty = $(this).data('qty');
+            let new_rate = parseFloat($(this).val()) || 0;
+            let new_amount = qty * new_rate;
+
+            // Summa ni yangilash
+            d.$wrapper.find(`#amount_${index}`).html(
+                format_currency(new_amount, frm.doc.currency)
+            );
+        });
+    }, 100);
+}
+
+// Jadval HTML yaratish
+function generate_items_table_html(items, currency) {
+    let html = `
+        <div style="overflow-x: auto; max-height: 500px; overflow-y: auto;">
+            <table class="table table-bordered" style="width: 100%; margin: 0;">
+                <thead style="background: #f5f7fa; position: sticky; top: 0; z-index: 10;">
+                    <tr>
+                        <th style="padding: 10px; min-width: 120px;">Item Code</th>
+                        <th style="padding: 10px; min-width: 180px;">Item Name</th>
+                        <th style="padding: 10px; text-align: right; min-width: 80px;">Qty</th>
+                        <th style="padding: 10px; text-align: right; min-width: 120px;">Joriy Narx</th>
+                        <th style="padding: 10px; text-align: right; min-width: 130px;">O'zgartirilgan Narx</th>
+                        <th style="padding: 10px; text-align: right; min-width: 120px;">Summa</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+
+    items.forEach((item, index) => {
+        html += `
+            <tr>
+                <td style="padding: 8px; vertical-align: middle;">
+                    <b>${item.item_code}</b>
+                </td>
+                <td style="padding: 8px; vertical-align: middle;">
+                    ${item.item_name}
+                </td>
+                <td style="padding: 8px; text-align: right; vertical-align: middle;">
+                    <span style="color: #666;">${format_number(item.qty, null, 2)}</span>
+                </td>
+                <td style="padding: 8px; text-align: right; vertical-align: middle;">
+                    <span style="color: #666;">${format_currency(item.current_rate, currency)}</span>
+                </td>
+                <td style="padding: 8px; vertical-align: middle;">
+                    <input
+                        type="number"
+                        id="new_rate_${index}"
+                        class="form-control new-rate-input"
+                        value="${item.new_rate}"
+                        step="0.01"
+                        data-index="${index}"
+                        data-qty="${item.qty}"
+                        style="text-align: right; font-weight: bold; color: #2490ef;"
+                    />
+                </td>
+                <td style="padding: 8px; text-align: right; vertical-align: middle;">
+                    <span id="amount_${index}" style="font-weight: bold; color: #155724;">
+                        ${format_currency(item.new_amount, currency)}
+                    </span>
+                </td>
+            </tr>
+        `;
+    });
+
+    html += `
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    return html;
+}
 
 // A. Kursni olish funksiyasi (Universal)
 function get_lcv_exchange_rate(frm) {

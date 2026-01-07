@@ -7,6 +7,13 @@ from premierprint.utils.naming_helper import get_category_from_series, get_item_
 
 
 class CustomSalesInvoice(SalesInvoice):
+    """
+    Sales Invoice uchun maxsus controller.
+
+    O'zgarishlar:
+    - autoname(): Kategoriya asosida nomlanish (Рsi0000001/23/45/67 formatida)
+    """
+
     def autoname(self):
         """Format: Рsi0000001/23/45/67"""
         category_code = get_category_from_series(self.naming_series, "si")
@@ -14,3 +21,4 @@ class CustomSalesInvoice(SalesInvoice):
         base_name = f"{category_code}{next_id}"
         item_codes = get_item_codes(self)
         self.name = build_name_with_items(base_name, item_codes)
+
