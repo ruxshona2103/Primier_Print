@@ -1,21 +1,3 @@
-"""
-Professional Purchase Invoice LCV Auto-Creation Module
--------------------------------------------------------
-Faqat o'zgargan narxdagi itemlar uchun LCV yaratadi va tannarxga qo'shadi.
-
-ASOSIY LOGIKA:
-- PI submit bo'lganda PR bilan narxlarni solishtiradi
-- Faqat farq bor itemlar uchun LCV yaratadi
-- Farq to'g'ridan-to'g'ri item tannarxiga qo'shiladi
-- Bir PI uchun bir LCV (bir nechta PR dan itemlar bo'lsa ham)
-
-REAL MISOLLAR:
-Misol 1: PR-001 da Item A = $100, PI-001 da Item A = 12,800,000 UZS (kurs 12,800)
-→ LCV: Item A ga +$1,000 qo'shiladi (yangi tannarx: $1,100)
-
-Misol 2: PR-002 da 3 ta item, PI-002 da faqat 2 tasi narxi o'zgargan
-→ LCV: faqat o'zgargan 2 ta item uchun yaratiladi
-"""
 
 import frappe
 from frappe.utils import flt, nowdate
@@ -26,15 +8,6 @@ import json
 # ==================== MAIN HOOKS ====================
 
 def auto_create_lcv_for_price_variance(doc, method):
-	"""
-	PI submit bo'lganda narx farqi uchun LCV yaratadi.
-
-	Qadamlar:
-	1. PI va PR narxlarni solishtiradi
-	2. Faqat o'zgargan itemlarni topadi
-	3. Bir LCV yaratadi (barcha o'zgargan itemlar uchun)
-	4. Tannarxga to'g'ridan-to'g'ri qo'shadi
-	"""
 	# Validations
 	if not should_create_lcv(doc):
 		return
