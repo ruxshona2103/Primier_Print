@@ -1,6 +1,6 @@
 frappe.ui.form.on('Purchase Invoice', {
     // 1. FORM YUKLANGANDA
-    refresh: function(frm) {
+    refresh: function (frm) {
         // Faqat yangi (Draft) va transport narxi kiritilmagan bo'lsa, PO dan tortamiz
         if (frm.doc.docstatus === 0 && !frm.doc.custom_transport_cost) {
             fetch_details_from_po(frm);
@@ -8,12 +8,12 @@ frappe.ui.form.on('Purchase Invoice', {
     },
 
     // 2. LCV VALYUTASI O'ZGARSA -> KURSNI YANGILASH
-    custom_lcv_currency: function(frm) {
+    custom_lcv_currency: function (frm) {
         get_lcv_exchange_rate(frm);
     },
 
     // 3. POSTING DATE O'ZGARSA -> KURSNI YANGILASH
-    posting_date: function(frm) {
+    posting_date: function (frm) {
         if (frm.doc.custom_lcv_currency) {
             get_lcv_exchange_rate(frm);
         }
@@ -21,11 +21,11 @@ frappe.ui.form.on('Purchase Invoice', {
 
     // 4. SUBMIT QILISHDAN OLDIN (Narxni Tasdiqlash Dialog)
     // Dialog HAR SAFAR ochiladi - narxlarni tasdiqlash uchun
-    before_submit: function(frm) {
+    before_submit: function (frm) {
         return new Promise((resolve, reject) => {
             // PO/PR ga bog'liq itemlarni topish
             let items_with_po_pr = [];
-            $.each(frm.doc.items || [], function(i, item) {
+            $.each(frm.doc.items || [], function (i, item) {
                 if (item.purchase_order || item.purchase_receipt) {
                     items_with_po_pr.push(item);
                 }
@@ -37,21 +37,58 @@ frappe.ui.form.on('Purchase Invoice', {
                 return;
             }
 
-            // Dialog uchun data tayyorlash
-            // Joriy narxlarni ko'rsatadi (foydalanuvchi o'zgartirgan bo'lishi mumkin)
-            let dialog_data = items_with_po_pr.map(item => ({
-                idx: item.idx,
-                item_code: item.item_code,
-                item_name: item.item_name,
-                qty: item.qty,
-                current_rate: item.rate,  // Hozirgi narx (o'zgargan bo'lishi mumkin)
-                current_amount: item.amount,
-                new_rate: item.rate,  // Default qiymati joriy narx
-                new_amount: item.amount  // Default qiymati joriy summa
-            }));
+            // Asl narxlarni PO/PR dan olish uchun serverga so'rov
+            frappe.call({
+                method: 'premierprint.api.purchase_invoice.get_original_prices',
+                args: {
+                    items: items_with_po_pr.map(item => ({
+                        item_code: item.item_code,
+                        purchase_order: item.purchase_order,
+                        purchase_receipt: item.purchase_receipt,
+                        po_detail: item.po_detail,
+                        pr_detail: item.pr_detail
+                    }))
+                },
+                async: false,  // Sinxron - dialogni to'g'ri ko'rsatish uchun
+                callback: function (r) {
+                    let original_prices = r.message || {};
 
-            // Narxni Tasdiqlash Dialog - har safar ochiladi
-            show_price_verification_dialog(frm, dialog_data, resolve, reject);
+                    // Dialog uchun data tayyorlash
+                    // Joriy narx = asl PO/PR narxi, Yangi narx = formdagi o'zgartirilgan narx
+                    let dialog_data = items_with_po_pr.map(item => {
+                        let key = item.item_code + '_' + (item.po_detail || item.pr_detail || '');
+                        let original_rate = original_prices[key] || item.rate;
+
+                        return {
+                            idx: item.idx,
+                            item_code: item.item_code,
+                            item_name: item.item_name,
+                            qty: item.qty,
+                            original_rate: original_rate,  // Asl narx (PO/PR dan)
+                            current_rate: item.rate,  // Formdagi hozirgi narx (o'zgargan bo'lishi mumkin)
+                            new_rate: item.rate,  // Default qiymati formdagi narx
+                            new_amount: item.amount  // Default qiymati joriy summa
+                        };
+                    });
+
+                    // Narxni Tasdiqlash Dialog - har safar ochiladi
+                    show_price_verification_dialog(frm, dialog_data, resolve, reject);
+                },
+                error: function () {
+                    // API xato bo'lsa, eski usulda davom etamiz
+                    let dialog_data = items_with_po_pr.map(item => ({
+                        idx: item.idx,
+                        item_code: item.item_code,
+                        item_name: item.item_name,
+                        qty: item.qty,
+                        original_rate: item.rate,
+                        current_rate: item.rate,
+                        new_rate: item.rate,
+                        new_amount: item.amount
+                    }));
+                    show_price_verification_dialog(frm, dialog_data, resolve, reject);
+                }
+            });
         });
     }
 });
@@ -184,7 +221,7 @@ function show_price_verification_dialog(frm, dialog_data, resolve, reject) {
 
     // Narx o'zgartirilganda summa avtomatik hisoblash
     setTimeout(() => {
-        d.$wrapper.find('.new-rate-input').on('input', function() {
+        d.$wrapper.find('.new-rate-input').on('input', function () {
             let index = $(this).data('index');
             let qty = $(this).data('qty');
             let new_rate = parseFloat($(this).val()) || 0;
@@ -229,7 +266,7 @@ function generate_items_table_html(items, currency) {
                     <span style="color: #666;">${format_number(item.qty, null, 2)}</span>
                 </td>
                 <td style="padding: 8px; text-align: right; vertical-align: middle;">
-                    <span style="color: #666;">${format_currency(item.current_rate, currency)}</span>
+                    <span style="color: #666;">${format_currency(item.original_rate, currency)}</span>
                 </td>
                 <td style="padding: 8px; vertical-align: middle;">
                     <input
@@ -287,7 +324,7 @@ function get_lcv_exchange_rate(frm) {
                 from_currency: company_currency, // USD
                 to_currency: lcv_currency        // UZS
             },
-            callback: function(r) {
+            callback: function (r) {
                 if (r.message) {
                     frm.set_value('custom_lcv_exchange_rate', r.message);
                     frappe.msgprint({
