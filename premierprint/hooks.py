@@ -147,13 +147,9 @@ override_doctype_class = {
 	"Item": "premierprint.overrides.item.CustomItem",
 	"Customer": "premierprint.overrides.customer.CustomCustomer",
 	"Sales Order": "premierprint.overrides.sales_order.CustomSalesOrder",
-<<<<<<< Updated upstream
 	"Stock Entry": "premierprint.overrides.stock_entry.CustomStockEntry",
-=======
 	"Purchase Receipt": "premierprint.overrides.purchase_receipt.CustomPurchaseReceipt",
-
 	"Payment Entry": "premierprint.overrides.payment_entry.CustomPaymentEntry",
->>>>>>> Stashed changes
 	"Sales Invoice": "premierprint.overrides.sales_invoice.CustomSalesInvoice",
 	"Delivery Note": "premierprint.overrides.delivery_note.CustomDeliveryNote"
 }
@@ -187,15 +183,12 @@ app_include_js = [
 	"/assets/premierprint/js/global_modal_fix.js",
 	"/assets/premierprint/js/auto_fetch_account.js",
 ]
-<<<<<<< Updated upstream
 doctype_js = {
     "Purchase Order": "public/js/purchase_order.js",   # Bu oldindan bor edi
     "Purchase Invoice": "public/js/purchase_invoice.js", # Buni qo'sh
 						"Item": "public/js/item.js",
 	"Payment Entry": "public/js/payment_entry.js"
 }
-=======
->>>>>>> Stashed changes
 
 # DocType-specific Client Scripts
 # IZOH: party_utils.js o'chirildi - endi standart ERPNext Default Accounts ishlatiladi
@@ -222,11 +215,8 @@ doc_events = {
         "before_insert": "premierprint.naming.set_smart_id"
 	},
 	"Stock Entry": {
-<<<<<<< Updated upstream
-		"on_submit": "premierprint.utils.stock_entry.on_submit"
-=======
+		"on_submit": "premierprint.utils.stock_entry.on_submit",
 		"on_submit": "premierprint.utils.stock_entry.on_submit_stock_entry"
->>>>>>> Stashed changes
 	}
 }
 
