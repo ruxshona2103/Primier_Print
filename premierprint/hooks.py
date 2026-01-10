@@ -147,10 +147,9 @@ override_doctype_class = {
 	"Item": "premierprint.overrides.item.CustomItem",
 	"Customer": "premierprint.overrides.customer.CustomCustomer",
 	"Sales Order": "premierprint.overrides.sales_order.CustomSalesOrder",
+    "Payment Entry": "premierprint.overrides.payment_entry.CustomPaymentEntry",
 	"Sales Invoice": "premierprint.overrides.sales_invoice.CustomSalesInvoice",
-	"Delivery Note": "premierprint.overrides.delivery_note.CustomDeliveryNote",
-	"Stock Entry": "premierprint.overrides.stock_entry.CustomStockEntry",
-	"Stock Ledger Entry": "premierprint.overrides.stock_ledger_entry.CustomStockLedgerEntry"
+	"Delivery Note": "premierprint.overrides.delivery_note.CustomDeliveryNote"
 }
 
 # Document Events
@@ -188,30 +187,7 @@ doctype_js = {
 	"Purchase Order": "public/js/purchase_order.js",
 	"Purchase Invoice": "public/js/purchase_invoice.js",
 	"Item": "public/js/item.js",
-	"Payment Entry": "public/js/payment_entry.js",
-
-}
-
-# Document Events
-doc_events = {
-	"Purchase Invoice": {
-        "on_submit": ["premierprint.premierprint.api.create_lcv_from_pi",
-					  "premierprint.doctype.purchase_invoice.auto_create_lcv_for_price_variance"],
-		"on_cancel": "premierprint.doctype.purchase_invoice.cancel_linked_lcvs"
-	},
-    "Item": {
-        "before_insert": "premierprint.naming.set_smart_id"
-    },
-    "Customer": {
-        "before_insert": "premierprint.naming.set_smart_id"
-	},
-	"Stock Entry": {
-		"before_validate": "premierprint.utils.stock_entry.before_validate_stock_entry",
-		"on_submit": "premierprint.utils.stock_entry.on_submit_stock_entry"
-	},
-	"Stock Ledger Entry": {
-		"before_validate": "premierprint.utils.stock_ledger_entry_hooks.before_validate_stock_ledger_entry"
-	}
+	"Payment Entry": "public/js/payment_entry.js"
 }
 
 # scheduler_events = {

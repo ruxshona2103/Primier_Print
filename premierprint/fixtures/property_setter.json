@@ -1,6 +1,54 @@
 [
  {
   "default_value": null,
+  "doc_type": "Item",
+  "docstatus": 0,
+  "doctype": "Property Setter",
+  "doctype_or_field": "DocField",
+  "field_name": "section_break_11",
+  "is_system_generated": 0,
+  "modified": "2025-12-15 20:24:07.703639",
+  "module": null,
+  "name": "Item-section_break_11-hidden",
+  "property": "hidden",
+  "property_type": "Check",
+  "row_name": null,
+  "value": "1"
+ },
+ {
+  "default_value": null,
+  "doc_type": "Item",
+  "docstatus": 0,
+  "doctype": "Property Setter",
+  "doctype_or_field": "DocField",
+  "field_name": "unit_of_measure_conversion",
+  "is_system_generated": 0,
+  "modified": "2025-12-15 21:04:03.656049",
+  "module": null,
+  "name": "Item-unit_of_measure_conversion-hidden",
+  "property": "hidden",
+  "property_type": "Check",
+  "row_name": null,
+  "value": "1"
+ },
+ {
+  "default_value": null,
+  "doc_type": "Landed Cost Voucher",
+  "docstatus": 0,
+  "doctype": "Property Setter",
+  "doctype_or_field": "DocField",
+  "field_name": "company",
+  "is_system_generated": 1,
+  "modified": "2026-01-07 16:48:04.166751",
+  "module": null,
+  "name": "Landed Cost Voucher-company-in_list_view",
+  "property": "in_list_view",
+  "property_type": "Check",
+  "row_name": null,
+  "value": "1"
+ },
+ {
+  "default_value": null,
   "doc_type": "Material Request",
   "docstatus": 0,
   "doctype": "Property Setter",
@@ -2174,22 +2222,6 @@
   "property_type": "Check",
   "row_name": null,
   "value": "1"
- },
- {
-  "default_value": null,
-  "doc_type": "Stock Entry",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocType",
-  "field_name": null,
-  "is_system_generated": 0,
-  "modified": "2025-12-22 17:15:31.283034",
-  "module": null,
-  "name": "Stock Entry-main-field_order",
-  "property": "field_order",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "[\"stock_entry_details_tab\", \"naming_series\", \"stock_entry_type\", \"outgoing_stock_entry\", \"purpose\", \"add_to_transit\", \"custom_column_break_fduu9\", \"work_order\", \"custom_sales_order\", \"custom_sales_order_item\", \"purchase_order\", \"subcontracting_order\", \"delivery_note_no\", \"sales_invoice_no\", \"pick_list\", \"purchase_receipt_no\", \"asset_repair\", \"col2\", \"company\", \"posting_date\", \"posting_time\", \"custom_column_break_akklp\", \"custom_from_sub_company\", \"custom_to_sub_company\", \"column_break_eaoa\", \"set_posting_time\", \"inspection_required\", \"apply_putaway_rule\", \"bom_info_section\", \"from_bom\", \"use_multi_level_bom\", \"bom_no\", \"cb1\", \"fg_completed_qty\", \"get_items\", \"section_break_7qsm\", \"process_loss_percentage\", \"column_break_e92r\", \"process_loss_qty\", \"section_break_jwgn\", \"from_warehouse\", \"source_warehouse_address\", \"source_address_display\", \"cb0\", \"to_warehouse\", \"target_warehouse_address\", \"target_address_display\", \"sb0\", \"scan_barcode\", \"last_scanned_warehouse\", \"items_section\", \"items\", \"get_stock_and_rate\", \"section_break_19\", \"total_outgoing_value\", \"column_break_22\", \"total_incoming_value\", \"value_difference\", \"additional_costs_section\", \"additional_costs\", \"total_additional_costs\", \"supplier_info_tab\", \"contact_section\", \"supplier\", \"supplier_name\", \"supplier_address\", \"address_display\", \"accounting_dimensions_section\", \"project\", \"other_info_tab\", \"printing_settings\", \"select_print_heading\", \"print_settings_col_break\", \"letter_head\", \"more_info\", \"is_opening\", \"remarks\", \"col5\", \"per_transferred\", \"total_amount\", \"job_card\", \"amended_from\", \"credit_note\", \"is_return\", \"tab_connections\"]"
  },
  {
   "default_value": null,
@@ -6654,5 +6686,21 @@
   "property_type": "Text",
   "row_name": null,
   "value": "П-.#####"
+ },
+ {
+  "default_value": null,
+  "doc_type": "Stock Entry",
+  "docstatus": 0,
+  "doctype": "Property Setter",
+  "doctype_or_field": "DocType",
+  "field_name": null,
+  "is_system_generated": 0,
+  "modified": "2026-01-10 17:10:13.350962",
+  "module": null,
+  "name": "Stock Entry-main-field_order",
+  "property": "field_order",
+  "property_type": "Data",
+  "row_name": null,
+  "value": "[\"stock_entry_details_tab\", \"naming_series\", \"stock_entry_type\", \"outgoing_stock_entry\", \"purpose\", \"add_to_transit\", \"work_order\", \"custom_sales_order\", \"custom_sales_order_item\", \"custom_supplier\", \"purchase_order\", \"subcontracting_order\", \"delivery_note_no\", \"sales_invoice_no\", \"pick_list\", \"purchase_receipt_no\", \"asset_repair\", \"col2\", \"company\", \"posting_date\", \"posting_time\", \"column_break_eaoa\", \"set_posting_time\", \"inspection_required\", \"apply_putaway_rule\", \"custom_apply_putaway_rule_copy\", \"bom_info_section\", \"from_bom\", \"use_multi_level_bom\", \"bom_no\", \"cb1\", \"fg_completed_qty\", \"get_items\", \"section_break_7qsm\", \"process_loss_percentage\", \"column_break_e92r\", \"process_loss_qty\", \"section_break_jwgn\", \"from_warehouse\", \"source_warehouse_address\", \"source_address_display\", \"cb0\", \"to_warehouse\", \"target_warehouse_address\", \"target_address_display\", \"sb0\", \"scan_barcode\", \"last_scanned_warehouse\", \"items_section\", \"items\", \"get_stock_and_rate\", \"section_break_19\", \"total_outgoing_value\", \"column_break_22\", \"total_incoming_value\", \"value_difference\", \"additional_costs_section\", \"additional_costs\", \"total_additional_costs\", \"supplier_info_tab\", \"contact_section\", \"supplier\", \"supplier_name\", \"supplier_address\", \"address_display\", \"accounting_dimensions_section\", \"project\", \"other_info_tab\", \"printing_settings\", \"select_print_heading\", \"print_settings_col_break\", \"letter_head\", \"more_info\", \"is_opening\", \"remarks\", \"col5\", \"per_transferred\", \"total_amount\", \"job_card\", \"amended_from\", \"credit_note\", \"is_return\", \"tab_connections\"]"
  }
 ]

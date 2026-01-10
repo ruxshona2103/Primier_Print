@@ -4,7 +4,7 @@
   "doctype": "Workflow",
   "document_type": "Sales Order",
   "is_active": 0,
-  "modified": "2025-12-23 13:31:21.652531",
+  "modified": "2026-01-10 17:06:17.885414",
   "name": "Sales Order Production Flow(M)",
   "override_status": 0,
   "send_email_alert": 0,
