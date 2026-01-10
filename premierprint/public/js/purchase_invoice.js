@@ -131,8 +131,8 @@ function show_price_verification_dialog(frm, dialog_data, resolve, reject) {
                 let new_rate_input = d.$wrapper.find(`#new_rate_${index}`);
                 let new_rate = parseFloat(new_rate_input.val()) || item.current_rate;
 
-                // Narx o'zgarganini tekshirish
-                if (Math.abs(new_rate - item.current_rate) > 0.001) {
+                // Narx o'zgarganini tekshirish (asl narx bilan solishtiramiz)
+                if (Math.abs(new_rate - item.original_rate) > 0.001) {
                     is_changed = true;
                 }
 
