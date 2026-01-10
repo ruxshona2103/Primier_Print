@@ -1,77 +1,5 @@
 [
  {
-  "date": "2026-01-01",
-  "docstatus": 0,
-  "doctype": "Currency Exchange",
-  "exchange_rate": 12025.33,
-  "for_buying": 1,
-  "for_selling": 1,
-  "from_currency": "USD",
-  "modified": "2026-01-01 08:48:35.210487",
-  "name": "2026-01-01-USD-UZS-Selling-Buying",
-  "to_currency": "UZS"
- },
- {
-  "date": "2026-01-01",
-  "docstatus": 0,
-  "doctype": "Currency Exchange",
-  "exchange_rate": 8.3158e-05,
-  "for_buying": 1,
-  "for_selling": 1,
-  "from_currency": "UZS",
-  "modified": "2026-01-01 08:48:35.237208",
-  "name": "2026-01-01-UZS-USD-Selling-Buying",
-  "to_currency": "USD"
- },
- {
-  "date": "2026-01-03",
-  "docstatus": 0,
-  "doctype": "Currency Exchange",
-  "exchange_rate": 12025.33,
-  "for_buying": 1,
-  "for_selling": 1,
-  "from_currency": "USD",
-  "modified": "2026-01-03 13:18:08.512155",
-  "name": "2026-01-03-USD-UZS-Selling-Buying",
-  "to_currency": "UZS"
- },
- {
-  "date": "2026-01-03",
-  "docstatus": 0,
-  "doctype": "Currency Exchange",
-  "exchange_rate": 8.3158e-05,
-  "for_buying": 1,
-  "for_selling": 1,
-  "from_currency": "UZS",
-  "modified": "2026-01-03 13:18:08.550072",
-  "name": "2026-01-03-UZS-USD-Selling-Buying",
-  "to_currency": "USD"
- },
- {
-  "date": "2025-12-26",
-  "docstatus": 0,
-  "doctype": "Currency Exchange",
-  "exchange_rate": 12078.47,
-  "for_buying": 1,
-  "for_selling": 1,
-  "from_currency": "USD",
-  "modified": "2025-12-26 08:00:58.831349",
-  "name": "2025-12-26-USD-UZS-Selling-Buying",
-  "to_currency": "UZS"
- },
- {
-  "date": "2025-12-26",
-  "docstatus": 0,
-  "doctype": "Currency Exchange",
-  "exchange_rate": 8.2792e-05,
-  "for_buying": 1,
-  "for_selling": 1,
-  "from_currency": "UZS",
-  "modified": "2025-12-26 08:00:58.878681",
-  "name": "2025-12-26-UZS-USD-Selling-Buying",
-  "to_currency": "USD"
- },
- {
   "date": "2025-12-18",
   "docstatus": 0,
   "doctype": "Currency Exchange",
@@ -264,6 +192,30 @@
   "to_currency": "USD"
  },
  {
+  "date": "2025-12-26",
+  "docstatus": 0,
+  "doctype": "Currency Exchange",
+  "exchange_rate": 12078.47,
+  "for_buying": 1,
+  "for_selling": 1,
+  "from_currency": "USD",
+  "modified": "2025-12-26 08:00:58.831349",
+  "name": "2025-12-26-USD-UZS-Selling-Buying",
+  "to_currency": "UZS"
+ },
+ {
+  "date": "2025-12-26",
+  "docstatus": 0,
+  "doctype": "Currency Exchange",
+  "exchange_rate": 8.2792e-05,
+  "for_buying": 1,
+  "for_selling": 1,
+  "from_currency": "UZS",
+  "modified": "2025-12-26 08:00:58.878681",
+  "name": "2025-12-26-UZS-USD-Selling-Buying",
+  "to_currency": "USD"
+ },
+ {
   "date": "2025-12-27",
   "docstatus": 0,
   "doctype": "Currency Exchange",
@@ -360,6 +312,30 @@
   "to_currency": "USD"
  },
  {
+  "date": "2026-01-01",
+  "docstatus": 0,
+  "doctype": "Currency Exchange",
+  "exchange_rate": 12025.33,
+  "for_buying": 1,
+  "for_selling": 1,
+  "from_currency": "USD",
+  "modified": "2026-01-01 08:48:35.210487",
+  "name": "2026-01-01-USD-UZS-Selling-Buying",
+  "to_currency": "UZS"
+ },
+ {
+  "date": "2026-01-01",
+  "docstatus": 0,
+  "doctype": "Currency Exchange",
+  "exchange_rate": 8.3158e-05,
+  "for_buying": 1,
+  "for_selling": 1,
+  "from_currency": "UZS",
+  "modified": "2026-01-01 08:48:35.237208",
+  "name": "2026-01-01-UZS-USD-Selling-Buying",
+  "to_currency": "USD"
+ },
+ {
   "date": "2026-01-02",
   "docstatus": 0,
   "doctype": "Currency Exchange",
@@ -381,6 +357,30 @@
   "from_currency": "UZS",
   "modified": "2026-01-02 19:10:40.766875",
   "name": "2026-01-02-UZS-USD-Selling-Buying",
+  "to_currency": "USD"
+ },
+ {
+  "date": "2026-01-03",
+  "docstatus": 0,
+  "doctype": "Currency Exchange",
+  "exchange_rate": 12025.33,
+  "for_buying": 1,
+  "for_selling": 1,
+  "from_currency": "USD",
+  "modified": "2026-01-03 13:18:08.512155",
+  "name": "2026-01-03-USD-UZS-Selling-Buying",
+  "to_currency": "UZS"
+ },
+ {
+  "date": "2026-01-03",
+  "docstatus": 0,
+  "doctype": "Currency Exchange",
+  "exchange_rate": 8.3158e-05,
+  "for_buying": 1,
+  "for_selling": 1,
+  "from_currency": "UZS",
+  "modified": "2026-01-03 13:18:08.550072",
+  "name": "2026-01-03-UZS-USD-Selling-Buying",
   "to_currency": "USD"
  },
  {
@@ -477,6 +477,54 @@
   "from_currency": "UZS",
   "modified": "2026-01-07 08:00:54.426384",
   "name": "2026-01-07-UZS-USD-Selling-Buying",
+  "to_currency": "USD"
+ },
+ {
+  "date": "2026-01-08",
+  "docstatus": 0,
+  "doctype": "Currency Exchange",
+  "exchange_rate": 12033.28,
+  "for_buying": 1,
+  "for_selling": 1,
+  "from_currency": "USD",
+  "modified": "2026-01-08 16:11:09.650811",
+  "name": "2026-01-08-USD-UZS-Selling-Buying",
+  "to_currency": "UZS"
+ },
+ {
+  "date": "2026-01-08",
+  "docstatus": 0,
+  "doctype": "Currency Exchange",
+  "exchange_rate": 8.3103e-05,
+  "for_buying": 1,
+  "for_selling": 1,
+  "from_currency": "UZS",
+  "modified": "2026-01-08 16:11:09.697398",
+  "name": "2026-01-08-UZS-USD-Selling-Buying",
+  "to_currency": "USD"
+ },
+ {
+  "date": "2026-01-09",
+  "docstatus": 0,
+  "doctype": "Currency Exchange",
+  "exchange_rate": 12109.02,
+  "for_buying": 1,
+  "for_selling": 1,
+  "from_currency": "USD",
+  "modified": "2026-01-09 13:32:51.231454",
+  "name": "2026-01-09-USD-UZS-Selling-Buying",
+  "to_currency": "UZS"
+ },
+ {
+  "date": "2026-01-09",
+  "docstatus": 0,
+  "doctype": "Currency Exchange",
+  "exchange_rate": 8.2583e-05,
+  "for_buying": 1,
+  "for_selling": 1,
+  "from_currency": "UZS",
+  "modified": "2026-01-09 13:32:51.271462",
+  "name": "2026-01-09-UZS-USD-Selling-Buying",
   "to_currency": "USD"
  },
  {
