@@ -3,11 +3,11 @@
 This module provides:
 1. Query functions for Sales Order Item dropdown
 2. BOM material explosion logic
-3. on_submit hook for inter-company transfer automation with SMART WAREHOUSE LOGIC
+3. on_submit hook for inter-company transfer automation
 
 SMART WAREHOUSE LOGIC:
-- Source Company: Detected from doc.company (standard field)
-- Target Company: Detected from t_warehouse.company (automatic)
+- Source Company: Detected from s_warehouse.company
+- Target Company: Detected from t_warehouse.company
 - No need for custom_from_sub_company or custom_to_sub_company fields
 """
 
@@ -84,21 +84,7 @@ def get_bom_materials(sales_order_item: str) -> List[Dict]:
         sales_order_item: Sales Order Item name (ID)
 
     Returns:
-        List of dict with item details:
-        [
-            {
-                "item_code": str,
-                "item_name": str,
-                "qty": float,
-                "uom": str,
-                "stock_uom": str,
-                "conversion_factor": float,
-                "description": str,
-                "has_batch_no": int,
-                "has_serial_no": int,
-            },
-            ...
-        ]
+        List of dict with item details
     """
     if not sales_order_item:
         frappe.throw(_("Sales Order Item is required"))
@@ -132,7 +118,7 @@ def get_bom_materials(sales_order_item: str) -> List[Dict]:
         bom=bom,
         company=frappe.db.get_value("Sales Order", soi.parent, "company"),
         qty=soi.qty,
-        fetch_exploded=1,  # Get raw materials, not sub-assemblies
+        fetch_exploded=1,
         fetch_qty_in_stock_uom=False
     )
 
@@ -161,17 +147,54 @@ def get_bom_materials(sales_order_item: str) -> List[Dict]:
     return materials
 
 
+def before_validate_stock_entry(doc: Document, method: str = None) -> None:
+    """Hook executed before Stock Entry validation.
+
+    For 'Перемещение' type, monkey-patch validate_warehouse_company
+    to skip validation. This is necessary because ERPNext doesn't check flags.
+
+    Args:
+        doc: Stock Entry document
+        method: Hook method name (not used)
+    """
+    if doc.stock_entry_type == "Перемещение":
+        # Import and patch the validation function
+        import erpnext.stock.utils as stock_utils
+        
+        # Check if already patched
+        if not getattr(stock_utils, '_original_validate_warehouse_company', None):
+            # Store original function
+            stock_utils._original_validate_warehouse_company = stock_utils.validate_warehouse_company
+            
+            def _patched_validate_warehouse_company(warehouse, company):
+                """Patched version that respects ignore flag."""
+                if getattr(frappe.flags, 'ignore_validate_warehouse_company', False):
+                    return
+                return stock_utils._original_validate_warehouse_company(warehouse, company)
+            
+            # Apply patch
+            stock_utils.validate_warehouse_company = _patched_validate_warehouse_company
+            logger.info("Applied monkey patch to validate_warehouse_company")
+        
+        # Set flag to trigger the bypass
+        frappe.flags.ignore_validate_warehouse_company = True
+        doc.flags.ignore_validate_warehouse_company = True
+        
+        logger.info(
+            "Set ignore_validate_warehouse_company flag for Stock Entry: %s",
+            doc.name
+        )
+
+
 def on_submit_stock_entry(doc: Document, method: str = None) -> None:
     """Hook executed on Stock Entry submit.
 
-    SMART WAREHOUSE LOGIC for "Перемещение" type:
-    - Source Company: From doc.company (standard field)
-    - Target Company: Detected from t_warehouse.company (automatic detection)
-    - If Source Company != Target Company:
-      * Creates Sales Invoice (draft) from source to target
-      * Creates Purchase Receipt (draft) from target to source
-      * Auto-creates Customer/Supplier links if missing
-      * update_stock=0 (Stock Entry already handled stock movement)
+    For 'Перемещение' type, automatically creates inter-company documents
+    when source and target warehouses belong to different companies.
+
+    Creates:
+    - Sales Invoice (update_stock=0) in source company
+    - Purchase Invoice (update_stock=0) in target company
 
     Args:
         doc: Stock Entry document
@@ -186,37 +209,53 @@ def on_submit_stock_entry(doc: Document, method: str = None) -> None:
 
     logger.info("Processing inter-company transfer for Stock Entry: %s", doc.name)
 
-    # Group items by company pair (source_company, target_company)
-    # Source company is always doc.company
-    # Target company is detected from t_warehouse
+    try:
+        auto_create_inter_company_docs(doc)
+    except Exception as e:
+        logger.exception("Error in inter-company transfer: %s", str(e))
+        frappe.msgprint(
+            _("Warning: Error creating inter-company documents: {0}").format(str(e)),
+            indicator="orange"
+        )
+
+
+def auto_create_inter_company_docs(doc: Document) -> None:
+    """Automatically create Sales Invoice and Purchase Invoice for inter-company transfers.
+
+    Algorithm:
+    1. Loop through items
+    2. Get source_company from s_warehouse.company
+    3. Get target_company from t_warehouse.company
+    4. If source != target: Create SI (draft) and PI (draft)
+    5. Show HTML links to created documents
+
+    IMPORTANT: Stock Entry already updated stock ledger.
+    - Sales Invoice: update_stock=0 (accounting only)
+    - Purchase Invoice: update_stock=0 (accounting only)
+    This prevents double stock counting in target warehouse.
+
+    Args:
+        doc: Stock Entry document
+    """
+    # Group items by company pair
     company_transfers = {}
 
     for item in doc.items:
         if not item.s_warehouse or not item.t_warehouse:
             continue
 
-        # SMART DETECTION: Get companies from warehouses
-        source_company = doc.company  # Use standard company field as source
+        # Get companies from warehouses
+        source_company = frappe.db.get_value("Warehouse", item.s_warehouse, "company")
         target_company = frappe.db.get_value("Warehouse", item.t_warehouse, "company")
 
         if not source_company or not target_company:
             logger.warning(
-                "Company not found for item %s (source: %s, target warehouse: %s)",
-                item.item_code, source_company, item.t_warehouse
+                "Company not found for item %s (s_warehouse: %s, t_warehouse: %s)",
+                item.item_code, item.s_warehouse, item.t_warehouse
             )
             continue
 
-        # Verify s_warehouse belongs to source company
-        s_warehouse_company = frappe.db.get_value("Warehouse", item.s_warehouse, "company")
-        if s_warehouse_company != source_company:
-            frappe.msgprint(
-                _("Warning: Source warehouse {0} belongs to {1}, but document company is {2}").format(
-                    item.s_warehouse, s_warehouse_company, source_company
-                ),
-                indicator="orange"
-            )
-
-        # Only create documents for inter-company transfers
+        # Skip internal transfers (same company)
         if source_company == target_company:
             logger.info(
                 "Skipping internal transfer for item %s (same company: %s)",
@@ -231,69 +270,52 @@ def on_submit_stock_entry(doc: Document, method: str = None) -> None:
         company_transfers[key].append(item)
 
     # Create documents for each company pair
+    created_docs = []
+    
     for (source_company, target_company), items in company_transfers.items():
         try:
-            _create_inter_company_documents(
+            # Ensure Customer/Supplier relationships exist
+            customer = _ensure_customer_link(source_company, target_company)
+            supplier = _ensure_supplier_link(source_company, target_company)
+
+            # Create Sales Invoice (from source to target)
+            sales_invoice = _create_sales_invoice(
                 stock_entry=doc,
-                source_company=source_company,
-                target_company=target_company,
+                company=source_company,
+                customer=customer,
                 items=items
             )
+
+            # Create Purchase Invoice (target buying from source)
+            purchase_invoice = _create_purchase_invoice(
+                stock_entry=doc,
+                company=target_company,
+                supplier=supplier,
+                items=items
+            )
+
+            created_docs.append({
+                "source": source_company,
+                "target": target_company,
+                "si": sales_invoice.name,
+                "pi": purchase_invoice.name
+            })
+
         except Exception as e:
             logger.exception(
                 "Failed to create inter-company documents for %s -> %s: %s",
                 source_company, target_company, str(e)
             )
             frappe.msgprint(
-                _("Warning: Could not create inter-company documents for {0} -> {1}: {2}").format(
+                _("Warning: Could not create documents for {0} → {1}: {2}").format(
                     source_company, target_company, str(e)
                 ),
                 indicator="orange"
             )
 
-
-def _create_inter_company_documents(
-    stock_entry: Document,
-    source_company: str,
-    target_company: str,
-    items: List
-) -> None:
-    """Create Sales Invoice and Purchase Receipt for inter-company transfer.
-
-    Args:
-        stock_entry: Original Stock Entry document
-        source_company: Company sending materials (from doc.company)
-        target_company: Company receiving materials (from t_warehouse.company)
-        items: List of Stock Entry Detail items
-    """
-    # Ensure Customer/Supplier relationships exist
-    customer = _ensure_customer_link(source_company, target_company)
-    supplier = _ensure_supplier_link(source_company, target_company)
-
-    # Create Sales Invoice (from source to target)
-    sales_invoice = _create_sales_invoice(
-        stock_entry=stock_entry,
-        company=source_company,
-        customer=customer,
-        items=items
-    )
-
-    # Create Purchase Receipt (from target receiving from source)
-    purchase_receipt = _create_purchase_receipt(
-        stock_entry=stock_entry,
-        company=target_company,
-        supplier=supplier,
-        items=items
-    )
-
-    frappe.msgprint(
-        _("Created inter-company documents:<br>Sales Invoice: {0}<br>Purchase Receipt: {1}").format(
-            f'<a href="/app/sales-invoice/{sales_invoice.name}">{sales_invoice.name}</a>',
-            f'<a href="/app/purchase-receipt/{purchase_receipt.name}">{purchase_receipt.name}</a>'
-        ),
-        indicator="green",
-        alert=True
-    )
+    # Show success message with HTML links
+    if created_docs:
+        _show_success_message(created_docs)
 
 
 def _ensure_customer_link(source_company: str, target_company: str) -> str:
@@ -320,11 +342,12 @@ def _ensure_customer_link(source_company: str, target_company: str) -> str:
     customer.customer_name = target_company
     customer.customer_type = "Company"
     customer.represents_company = target_company
-    customer.customer_group = "Commercial"  # Default group
-    customer.territory = "Uzbekistan"  # Default territory
+    customer.customer_group = frappe.db.get_single_value("Selling Settings", "customer_group") or "Commercial"
+    customer.territory = frappe.db.get_single_value("Selling Settings", "territory") or "All Territories"
     customer.insert(ignore_permissions=True)
 
     logger.info("Created Customer: %s for Company: %s", customer.name, target_company)
+    frappe.msgprint(_("Auto-created Customer: {0}").format(customer.name), indicator="blue")
     return customer.name
 
 
@@ -352,11 +375,11 @@ def _ensure_supplier_link(source_company: str, target_company: str) -> str:
     supplier.supplier_name = source_company
     supplier.supplier_type = "Company"
     supplier.represents_company = source_company
-    supplier.supplier_group = "Services"  # Default group
-    supplier.country = "Uzbekistan"
+    supplier.supplier_group = frappe.db.get_single_value("Buying Settings", "supplier_group") or "Services"
     supplier.insert(ignore_permissions=True)
 
     logger.info("Created Supplier: %s for Company: %s", supplier.name, source_company)
+    frappe.msgprint(_("Auto-created Supplier: {0}").format(supplier.name), indicator="blue")
     return supplier.name
 
 
@@ -399,7 +422,7 @@ def _create_sales_invoice(
             "stock_uom": item.stock_uom,
             "conversion_factor": item.conversion_factor or 1.0,
             "rate": flt(item.basic_rate) or flt(item.valuation_rate) or 0,
-            "warehouse": item.s_warehouse,  # Selling from source warehouse
+            "warehouse": item.s_warehouse,
         })
 
     si.flags.ignore_permissions = True
@@ -410,37 +433,37 @@ def _create_sales_invoice(
     return si
 
 
-def _create_purchase_receipt(
+def _create_purchase_invoice(
     stock_entry: Document,
     company: str,
     supplier: str,
     items: List
 ) -> Document:
-    """Create Purchase Receipt (draft) for inter-company transfer.
+    """Create Purchase Invoice (draft) for inter-company transfer.
 
     Args:
         stock_entry: Source Stock Entry
         company: Buying company
         supplier: Selling supplier
-        items: Items being received
+        items: Items being purchased
 
     Returns:
-        Purchase Receipt document (draft)
+        Purchase Invoice document (draft)
     """
-    pr = frappe.new_doc("Purchase Receipt")
-    pr.company = company
-    pr.supplier = supplier
-    pr.posting_date = stock_entry.posting_date or nowdate()
-    pr.set_posting_time = 1
-    pr.update_stock = 0  # Stock Entry already updated stock
+    pi = frappe.new_doc("Purchase Invoice")
+    pi.company = company
+    pi.supplier = supplier
+    pi.posting_date = stock_entry.posting_date or nowdate()
+    pi.set_posting_time = 1
+    pi.update_stock = 0  # Stock Entry already updated stock
 
     # Reference to Stock Entry
-    if hasattr(pr, 'custom_stock_entry'):
-        pr.custom_stock_entry = stock_entry.name
+    if hasattr(pi, 'custom_stock_entry'):
+        pi.custom_stock_entry = stock_entry.name
 
     # Add items
     for item in items:
-        pr.append("items", {
+        pi.append("items", {
             "item_code": item.item_code,
             "item_name": item.item_name,
             "description": item.description,
@@ -449,12 +472,46 @@ def _create_purchase_receipt(
             "stock_uom": item.stock_uom,
             "conversion_factor": item.conversion_factor or 1.0,
             "rate": flt(item.basic_rate) or flt(item.valuation_rate) or 0,
-            "warehouse": item.t_warehouse,  # Receiving to target warehouse
+            "warehouse": item.t_warehouse,  # Target warehouse for reporting
         })
 
-    pr.flags.ignore_permissions = True
-    pr.flags.ignore_mandatory = True
-    pr.insert()
+    pi.flags.ignore_permissions = True
+    pi.flags.ignore_mandatory = True
+    pi.insert()
 
-    logger.info("Created Purchase Receipt: %s for Stock Entry: %s", pr.name, stock_entry.name)
-    return pr
+    logger.info("Created Purchase Invoice: %s for Stock Entry: %s", pi.name, stock_entry.name)
+    return pi
+
+
+def _show_success_message(created_docs: List[Dict]) -> None:
+    """Show success message with clickable HTML links to created documents.
+
+    Args:
+        created_docs: List of dicts with si and pi names
+    """
+    html_parts = []
+
+    for doc_info in created_docs:
+        si_link = f'<a href="/app/sales-invoice/{doc_info["si"]}">{doc_info["si"]}</a>'
+        pi_link = f'<a href="/app/purchase-invoice/{doc_info["pi"]}">{doc_info["pi"]}</a>'
+
+        html_parts.append(f"""
+        <div style="margin-bottom: 10px;">
+            <strong>{doc_info["source"]} → {doc_info["target"]}</strong><br>
+            📤 Sales Invoice: {si_link}<br>
+            📥 Purchase Invoice: {pi_link}
+        </div>
+        """)
+
+    message = f"""
+    <h4>✅ Inter-Company hujjatlari yaratildi:</h4>
+    {''.join(html_parts)}
+    <p><em>Iltimos, hujjatlarni tekshirib, submit qiling.</em></p>
+    """
+
+    frappe.msgprint(
+        message,
+        title=_("Inter-Company Transfer"),
+        indicator="green",
+        is_minimizable=True
+    )
