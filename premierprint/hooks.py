@@ -7,6 +7,7 @@ app_license = "mit"
 
 fixtures = [
     "Custom Field",
+    "Naming Series",
     "Property Setter",
     "Client Script",
     "Server Script",
