@@ -1,5 +1,29 @@
 [
  {
+  "date": "2026-01-12",
+  "docstatus": 0,
+  "doctype": "Currency Exchange",
+  "exchange_rate": 12131.55,
+  "for_buying": 1,
+  "for_selling": 1,
+  "from_currency": "USD",
+  "modified": "2026-01-12 11:01:00.739128",
+  "name": "2026-01-12-USD-UZS-Selling-Buying",
+  "to_currency": "UZS"
+ },
+ {
+  "date": "2026-01-12",
+  "docstatus": 0,
+  "doctype": "Currency Exchange",
+  "exchange_rate": 8.243e-05,
+  "for_buying": 1,
+  "for_selling": 1,
+  "from_currency": "UZS",
+  "modified": "2026-01-12 11:01:00.777865",
+  "name": "2026-01-12-UZS-USD-Selling-Buying",
+  "to_currency": "USD"
+ },
+ {
   "date": "2025-12-18",
   "docstatus": 0,
   "doctype": "Currency Exchange",
