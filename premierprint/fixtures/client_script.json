@@ -64,5 +64,16 @@
   "name": "Purchase Order",
   "script": "frappe.ui.form.on(\"Purchase Order\", {\n    before_save(frm) {\n        (frm.doc.items || []).forEach(row => {\n            if (!row.schedule_date) {\n                row.schedule_date = frappe.datetime.get_today();\n            }\n        });\n    },\n\n    refresh(frm) {\n        if (frm.fields_dict.items?.grid) {\n            const grid = frm.fields_dict.items.grid;\n\n            // faqat yashiramiz\n            grid.update_docfield_property(\"schedule_date\", \"hidden\", 1);\n            grid.update_docfield_property(\"schedule_date\", \"reqd\", 0);\n\n            grid.refresh();\n        }\n    }\n});\n\n",
   "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Stock Entry",
+  "enabled": 1,
+  "modified": "2026-01-12 12:11:42.911334",
+  "module": "premierprint",
+  "name": "Stock entry avtomatik id",
+  "script": "frappe.ui.form.on('Stock Entry', {\n    company: function(frm) {\n        // Kompaniya tanlanganda unga mos ID formatini (Series) o'rnatish\n        if (frm.doc.company === \"Premier Print\") {\n            frm.set_value('naming_series', 'ПП-.#######');\n        } \n        else if (frm.doc.company === \"Полиграфия\") {\n            frm.set_value('naming_series', 'П-.#######');\n        } \n        else if (frm.doc.company === \"Сувенир\") {\n            frm.set_value('naming_series', 'С-.#######');\n        } \n        else if (frm.doc.company === \"Реклама\") {\n            frm.set_value('naming_series', 'Р-.#######');\n        }\n    }\n});",
+  "view": "Form"
  }
 ]
