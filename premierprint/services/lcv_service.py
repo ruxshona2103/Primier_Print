@@ -1,16 +1,34 @@
 """
-Landed Cost Voucher (LCV) Management Module - FIXED VERSION
-============================================================
+Landed Cost Voucher (LCV) Management Module - UNIFIED CURRENCY CONVERSION
+==========================================================================
 
 ASOSIY TUZATISHLAR:
 1. ✅ Har bir PI item uchun alohida variance hisoblash
 2. ✅ PR-PI item juftligini unique tracking qilish
 3. ✅ Variance distribution xatosini bartaraf etish
 4. ✅ Bir xil item turli narxlarda kelganda aralashmaslik
+5. ✅ UNIFIED CURRENCY CONVERSION - Barcha konversiyalar bitta helper orqali
+
+CRITICAL ARCHITECTURE PRINCIPLE:
+================================
+ALL CURRENCY CONVERSIONS MUST USE: convert_to_company_currency()
+
+This function implements SMART RATE LOGIC:
+  - Rate < 1.0 → MULTIPLY (Standard Frappe: 1 UZS = 0.000083 USD)
+  - Rate > 1.0 → DIVIDE (Market Rate: 1 USD = 12,099 UZS)
+
+NEVER perform direct multiplication/division with conversion_rate or exchange_rate
+outside of convert_to_company_currency() function!
+
+WHY THIS MATTERS:
+- Transport LCV and Price Variance LCV must use IDENTICAL conversion logic
+- Prevents "fixing one breaks the other" syndrome
+- Handles both system rates and user-entered market rates correctly
+- Eliminates astronomical value bugs (e.g., 10,000 UZS → 120 million USD)
 
 Author: Premier Print Development Team
-Version: 2.2-FIXED
-Last Updated: 2025-01-12
+Version: 3.0-UNIFIED
+Last Updated: 2026-01-13
 """
 
 import frappe
@@ -330,8 +348,14 @@ def create_transport_lcv(doc, pr_list, transport_amount, original_amount,
 				  f"<b>Formula:</b> 1 {pr_currency} = X {company_currency}")
 			)
 		
-		# Calculate PR grand_total in company currency
-		pr_grand_total_company = flt(pr_grand_total) * flt(pr_conversion_rate)
+		# ✅ UNIFIED CONVERSION: Use convert_to_company_currency helper
+		# Calculate PR grand_total in company currency using the smart helper
+		pr_grand_total_company = convert_to_company_currency(
+			amount=pr_grand_total,
+			from_currency=pr_currency,
+			to_currency=company_currency,
+			exchange_rate=pr_conversion_rate
+		)
 		
 		frappe.logger().info(f"PR: {pr_name}")
 		frappe.logger().info(f"  - Grand Total: {pr_grand_total:,.2f} {pr_currency}")
@@ -689,14 +713,33 @@ def create_price_variance_lcv_fixed(doc, variance_items):
 		lcv = frappe.new_doc("Landed Cost Voucher")
 		lcv.company = doc.company
 		lcv.posting_date = doc.posting_date or nowdate()
+		
+		frappe.logger().info(f"=" * 80)
+		frappe.logger().info(f"CREATING PRICE VARIANCE LCV FOR PI: {doc.name}")
+		frappe.logger().info(f"Company: {doc.company} | Currency: {company_currency}")
+		frappe.logger().info(f"=" * 80)
 
 		for pr_name in pr_names:
 			pr_doc = frappe.get_cached_doc("Purchase Receipt", pr_name)
+			
+			# ✅ UNIFIED CONVERSION: Use convert_to_company_currency helper
+			pr_grand_total_company = convert_to_company_currency(
+				amount=flt(pr_doc.grand_total),
+				from_currency=pr_doc.currency,
+				to_currency=company_currency,
+				exchange_rate=flt(pr_doc.conversion_rate)
+			)
+			
+			frappe.logger().info(f"PR: {pr_name}")
+			frappe.logger().info(f"  - Grand Total: {pr_doc.grand_total:,.2f} {pr_doc.currency}")
+			frappe.logger().info(f"  - Conversion Rate: {pr_doc.conversion_rate:,.4f}")
+			frappe.logger().info(f"  - Grand Total (Company): {pr_grand_total_company:,.2f} {company_currency}")
+			
 			lcv.append("purchase_receipts", {
 				"receipt_document_type": "Purchase Receipt",
 				"receipt_document": pr_name,
 				"supplier": pr_doc.supplier,
-				"grand_total": pr_doc.grand_total
+				"grand_total": pr_grand_total_company  # ✅ Use converted value
 			})
 
 		variance_account = get_purchase_price_variance_account(doc.company)
@@ -1091,6 +1134,9 @@ def convert_to_company_currency(amount, from_currency, to_currency, exchange_rat
 	"""
 	Valyuta konvertatsiyasi - SMART RATE LOGIC VERSION
 	
+	⚠️  CRITICAL: THIS IS THE ONLY FUNCTION THAT SHOULD PERFORM CURRENCY MATH!
+	   ALL other functions MUST call this helper instead of doing their own multiplication/division.
+	
 	HANDLES TWO SCENARIOS:
 	
 	Scenario 1: Standard Frappe Rate (rate < 1.0)
@@ -1108,6 +1154,12 @@ def convert_to_company_currency(amount, from_currency, to_currency, exchange_rat
 	  - If rate < 1.0 → Use MULTIPLICATION (standard Frappe conversion)
 	  - If rate > 1.0 → Use DIVISION (market rate input)
 	  - If rate = 1.0 → Same currency or 1:1 exchange
+	
+	USED BY:
+	  - create_transport_lcv() - For PR grand_total conversion
+	  - create_price_variance_lcv_fixed() - For PR grand_total conversion
+	  - calculate_variance_smart() - For PR/PI rate conversion
+	  - Any future LCV-related currency conversion
 	
 	Args:
 		amount: Amount in source currency
