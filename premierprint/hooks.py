@@ -145,10 +145,7 @@ fixtures = [
 override_doctype_class = {
 	"Item": "premierprint.overrides.item.CustomItem",
 	"Customer": "premierprint.overrides.customer.CustomCustomer",
-	"Sales Order": "premierprint.overrides.sales_order.CustomSalesOrder",
-    "Payment Entry": "premierprint.overrides.payment_entry.CustomPaymentEntry",
-	"Sales Invoice": "premierprint.overrides.sales_invoice.CustomSalesInvoice",
-	"Delivery Note": "premierprint.overrides.delivery_note.CustomDeliveryNote"
+    "Payment Entry": "premierprint.overrides.payment_entry.CustomPaymentEntry"
 }
 
 # Document Events
