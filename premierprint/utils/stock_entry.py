@@ -23,11 +23,44 @@ logger = logging.getLogger(__name__)
 
 
 @frappe.whitelist()
+def get_sales_order_query(doctype: str, txt: str, searchfield: str, start: int, page_len: int, filters: Dict) -> List[tuple]:
+    """Custom query for Sales Order dropdown.
+
+    Shows customer_name + title first, then SO name for better UX.
+
+    Returns:
+        List of tuples: [(name, customer_name, grand_total, transaction_date), ...]
+    """
+    search_txt = f"%{txt}%"
+
+    return frappe.db.sql("""
+        SELECT
+            so.name,
+            so.customer_name,
+            so.grand_total,
+            so.transaction_date
+        FROM
+            `tabSales Order` so
+        WHERE
+            so.docstatus = 1
+            AND so.status NOT IN ('Closed', 'Cancelled')
+            AND (so.name LIKE %(txt)s OR so.customer_name LIKE %(txt)s OR so.title LIKE %(txt)s)
+        ORDER BY
+            so.transaction_date DESC, so.creation DESC
+        LIMIT %(start)s, %(page_len)s
+    """, {
+        "txt": search_txt,
+        "start": int(start),
+        "page_len": int(page_len)
+    })
+
+
+@frappe.whitelist()
 def get_sales_order_items_query(doctype: str, txt: str, searchfield: str, start: int, page_len: int, filters: Dict) -> List[tuple]:
     """Custom query for Sales Order Item dropdown.
 
-    Returns item_name instead of item_code for better UX.
-    Filters by sales_order if provided.
+    Returns item_name first for better UX.
+    Filters by sales_order (parent) if provided.
 
     Args:
         doctype: Target doctype (Sales Order Item)
@@ -35,26 +68,20 @@ def get_sales_order_items_query(doctype: str, txt: str, searchfield: str, start:
         searchfield: Field being searched (name by default)
         start: Pagination start
         page_len: Page size
-        filters: Additional filters (sales_order)
+        filters: Additional filters (sales_order or parent)
 
     Returns:
-        List of tuples: [(name, item_name, item_code, qty), ...]
+        List of tuples: [(name, item_name, item_code, qty, uom), ...]
     """
-    conditions = []
-    values = []
+    # Get sales_order from filters - can be "parent" or "sales_order"
+    sales_order = filters.get("parent") or filters.get("sales_order") if filters else None
+    search_txt = f"%{txt}%"
 
-    if filters.get("parent"):
-        conditions.append("soi.parent = %s")
-        values.append(filters["parent"])
+    if not sales_order:
+        # No Sales Order filter - return empty to force selection
+        return []
 
-    if txt:
-        conditions.append("(soi.item_name LIKE %s OR soi.item_code LIKE %s OR soi.name LIKE %s)")
-        search_txt = f"%{txt}%"
-        values.extend([search_txt, search_txt, search_txt])
-
-    where_clause = " AND " + " AND ".join(conditions) if conditions else ""
-
-    query = f"""
+    return frappe.db.sql("""
         SELECT
             soi.name,
             soi.item_name,
@@ -67,46 +94,112 @@ def get_sales_order_items_query(doctype: str, txt: str, searchfield: str, start:
             `tabSales Order` so ON soi.parent = so.name
         WHERE
             so.docstatus = 1
-            {where_clause}
+            AND soi.parent = %(sales_order)s
+            AND (soi.item_name LIKE %(txt)s OR soi.item_code LIKE %(txt)s OR soi.name LIKE %(txt)s)
         ORDER BY
-            soi.creation DESC
-        LIMIT {start}, {page_len}
-    """
-
-    return frappe.db.sql(query, tuple(values))
+            soi.idx ASC
+        LIMIT %(start)s, %(page_len)s
+    """, {
+        "sales_order": sales_order,
+        "txt": search_txt,
+        "start": int(start),
+        "page_len": int(page_len)
+    })
 
 
 @frappe.whitelist()
-def get_bom_materials(sales_order_item: str) -> List[Dict]:
+def get_sales_order_item_query(doctype: str, txt: str, searchfield: str, start: int, page_len: int, filters: Dict) -> List[tuple]:
+    """Query for Item in Stock Entry items table - filtered by Sales Order.
+
+    Shows item_name prominently in dropdown, filters by Sales Order if provided.
+    Returns: [(item_code, item_name, qty, stock_uom), ...]
+
+    Args:
+        doctype: Target doctype (Item)
+        txt: Search text entered by user
+        searchfield: Field being searched
+        start: Pagination start
+        page_len: Page size
+        filters: Additional filters (sales_order)
+
+    Returns:
+        List of tuples for awesomplete dropdown
+    """
+    sales_order = filters.get("sales_order") if filters else None
+    search_txt = f"%{txt}%"
+
+    if not sales_order:
+        # No Sales Order - return all items with item_name first
+        return frappe.db.sql("""
+            SELECT 
+                item.name as item_code,
+                item.item_name,
+                item.item_group,
+                item.stock_uom
+            FROM `tabItem` item
+            WHERE item.disabled = 0
+                AND (item.name LIKE %(txt)s OR item.item_name LIKE %(txt)s)
+            ORDER BY item.item_name
+            LIMIT %(start)s, %(page_len)s
+        """, {
+            "txt": search_txt,
+            "start": int(start),
+            "page_len": int(page_len)
+        })
+
+    # Filter by Sales Order items - show only items from that Sales Order
+    return frappe.db.sql("""
+        SELECT DISTINCT 
+            item.name as item_code,
+            item.item_name,
+            soi.qty,
+            item.stock_uom
+        FROM `tabSales Order Item` soi
+        INNER JOIN `tabItem` item ON soi.item_code = item.name
+        INNER JOIN `tabSales Order` so ON soi.parent = so.name
+        WHERE soi.parent = %(sales_order)s
+            AND so.docstatus = 1
+            AND (item.name LIKE %(txt)s OR item.item_name LIKE %(txt)s)
+        ORDER BY item.item_name
+        LIMIT %(start)s, %(page_len)s
+    """, {
+        "sales_order": sales_order,
+        "txt": search_txt,
+        "start": int(start),
+        "page_len": int(page_len)
+    })
+
+
+@frappe.whitelist()
+def get_bom_materials(sales_order_item: str = None, sales_order_item_id: str = None) -> List[Dict]:
     """Explode BOM and return raw materials for a Sales Order Item.
 
     Args:
-        sales_order_item: Sales Order Item name (ID)
+        sales_order_item: Sales Order Item name (ID) - primary param
+        sales_order_item_id: Alias for sales_order_item (for backwards compatibility)
 
     Returns:
         List of dict with item details
     """
-    if not sales_order_item:
+    # Accept either parameter name
+    soi_name = sales_order_item or sales_order_item_id
+    
+    if not soi_name:
         frappe.throw(_("Sales Order Item is required"))
 
-    # Get Sales Order Item details
+    # Get Sales Order Item details (without bom field - it doesn't exist)
     soi = frappe.db.get_value(
         "Sales Order Item",
-        sales_order_item,
-        ["item_code", "qty", "bom", "uom", "parent"],
+        soi_name,
+        ["item_code", "qty", "uom", "parent"],
         as_dict=1
     )
 
     if not soi:
-        frappe.throw(_("Sales Order Item {0} not found").format(sales_order_item))
+        frappe.throw(_("Sales Order Item {0} not found").format(soi_name))
 
-    if not soi.bom:
-        frappe.throw(_("No BOM found for Item {0} in Sales Order Item {1}").format(
-            soi.item_code, sales_order_item
-        ))
-
-    # Get default BOM if not specified
-    bom = soi.bom or frappe.db.get_value("Item", soi.item_code, "default_bom")
+    # Get default BOM from Item
+    bom = frappe.db.get_value("Item", soi.item_code, "default_bom")
 
     if not bom:
         frappe.throw(_("No BOM configured for Item {0}").format(soi.item_code))
