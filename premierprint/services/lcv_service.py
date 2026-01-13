@@ -2,33 +2,15 @@
 Landed Cost Voucher (LCV) Management Module - FIXED VERSION
 ============================================================
 
-CRITICAL FIXES (Senior ERPNext Developer Review):
-1. ✅ ACCOUNTING INTEGRITY: Uses "Stock Received But Not Billed" (SRBNB) account
-   - When PI rate > PR rate, ERPNext debits SRBNB (leaving balance)
-   - LCV now credits SRBNB (clearing balance) and debits Stock Account
-   - NO separate "Purchase Price Variance" account (causes accounting errors)
-
-2. ✅ CURRENCY CONVERSION: Converts PR grand_total to Company Currency
-   - Fixed: PR in UZS (27,000) now converts correctly to USD ($2.24)
-   - Formula: pr_grand_total_company = pr_grand_total * pr_conversion_rate
-   - Prevents LCV showing wrong currency amounts
-
-3. ✅ PRECISE PER-ITEM DISTRIBUTION: Manual variance allocation
-   - Sets distribute_charges_based_on = "Distribute Manually"
-   - Calculates exact variance for EACH item in Company Currency
-   - Programmatically sets applicable_charges per item:
-     * Item A with +$2.00 variance → applicable_charges = 2.0
-     * Item B with  $0.00 variance → applicable_charges = 0.0
-   - Only items with REAL price changes get variance applied
-
-4. ✅ VALIDATION: Handles edge cases
-   - Skips LCV creation if total variance < 0.01 (rounding errors)
-   - Handles mixed currencies (PR in EUR, PI in USD, Company in UZS)
-   - Validates conversion rates > 0
+ASOSIY TUZATISHLAR:
+1. ✅ Har bir PI item uchun alohida variance hisoblash
+2. ✅ PR-PI item juftligini unique tracking qilish
+3. ✅ Variance distribution xatosini bartaraf etish
+4. ✅ Bir xil item turli narxlarda kelganda aralashmaslik
 
 Author: Premier Print Development Team
-Version: 3.0-SENIOR-REVIEW-FIXED
-Last Updated: 2026-01-13
+Version: 2.2-FIXED
+Last Updated: 2025-01-12
 """
 
 import frappe
@@ -271,57 +253,192 @@ def create_lcv_from_pi(doc, method):
 
 def create_transport_lcv(doc, pr_list, transport_amount, original_amount,
 						 original_currency, exchange_rate):
-	"""Transport xarajati uchun LCV yaratadi"""
-
+	"""
+	Transport xarajati uchun LCV yaratadi - STRICT VERSION
+	
+	CRITICAL BUSINESS RULES:
+	1. PR currency conversion MUST be validated (no defaults allowed)
+	2. Allocation method mapping MUST be strict
+	3. Transport expense account MUST be used (NOT Stock Received But Not Billed)
+	4. All conversions MUST be logged for debugging
+	
+	Args:
+		doc: Purchase Invoice document
+		pr_list: List of Purchase Receipt names
+		transport_amount: Transport cost in company currency (already converted)
+		original_amount: Original transport amount in transaction currency
+		original_currency: Transaction currency
+		exchange_rate: Exchange rate used for conversion
+	
+	Returns:
+		Landed Cost Voucher document
+	"""
+	
+	# ==========================================
+	# STEP 1: STRICT VALIDATION
+	# ==========================================
+	
+	if not pr_list or len(pr_list) == 0:
+		frappe.throw(_("❌ Purchase Receipt list bo'sh. Transport LCV yaratib bo'lmaydi."))
+	
+	if not transport_amount or flt(transport_amount) <= 0:
+		frappe.throw(_("❌ Transport amount 0 yoki manfiy. LCV yaratib bo'lmaydi."))
+	
+	# ==========================================
+	# STEP 2: CREATE LCV DOCUMENT
+	# ==========================================
+	
 	lcv = frappe.new_doc("Landed Cost Voucher")
 	lcv.company = doc.company
 	lcv.posting_date = doc.posting_date
-
+	
+	company_currency = frappe.get_cached_value('Company', doc.company, 'default_currency')
+	
+	frappe.logger().info(f"=" * 80)
+	frappe.logger().info(f"CREATING TRANSPORT LCV FOR PI: {doc.name}")
+	frappe.logger().info(f"Company: {doc.company} | Currency: {company_currency}")
+	frappe.logger().info(f"=" * 80)
+	
+	# ==========================================
+	# STEP 3: ADD PURCHASE RECEIPTS WITH STRICT VALIDATION
+	# ==========================================
+	
 	for pr_name in pr_list:
-		pr_grand_total = frappe.db.get_value("Purchase Receipt", pr_name, "grand_total")
-		if not pr_grand_total:
-			frappe.throw(_(f"Purchase Receipt {pr_name} topilmadi"))
-
+		# Fetch PR data with conversion_rate
+		pr_data = frappe.db.get_value(
+			"Purchase Receipt",
+			pr_name,
+			["grand_total", "conversion_rate", "currency"],
+			as_dict=True
+		)
+		
+		if not pr_data:
+			frappe.throw(_(f"❌ Purchase Receipt {pr_name} topilmadi yoki o'chirilgan."))
+		
+		pr_grand_total = flt(pr_data.get("grand_total"))
+		pr_conversion_rate = flt(pr_data.get("conversion_rate"))
+		pr_currency = pr_data.get("currency")
+		
+		# STRICT VALIDATION: conversion_rate MUST be valid
+		if pr_conversion_rate <= 0 or pr_conversion_rate is None:
+			frappe.throw(
+				_(f"❌ CRITICAL ERROR: Purchase Receipt {pr_name} da conversion_rate noto'g'ri yoki 0!<br><br>"
+				  f"<b>Topilgan qiymat:</b> {pr_conversion_rate}<br>"
+				  f"<b>PR Currency:</b> {pr_currency}<br>"
+				  f"<b>Company Currency:</b> {company_currency}<br><br>"
+				  f"<b>Tuzatish:</b> Purchase Receipt ni ochib, conversion_rate ni to'g'rilang va qayta submit qiling.<br>"
+				  f"<b>Formula:</b> 1 {pr_currency} = X {company_currency}")
+			)
+		
+		# Calculate PR grand_total in company currency
+		pr_grand_total_company = flt(pr_grand_total) * flt(pr_conversion_rate)
+		
+		frappe.logger().info(f"PR: {pr_name}")
+		frappe.logger().info(f"  - Grand Total: {pr_grand_total:,.2f} {pr_currency}")
+		frappe.logger().info(f"  - Conversion Rate: {pr_conversion_rate:,.4f}")
+		frappe.logger().info(f"  - Grand Total (Company): {pr_grand_total_company:,.2f} {company_currency}")
+		
+		# Add to LCV with CONVERTED grand_total
 		lcv.append("purchase_receipts", {
 			"receipt_document_type": "Purchase Receipt",
 			"receipt_document": pr_name,
-			"grand_total": flt(pr_grand_total)
+			"grand_total": pr_grand_total_company  # Use converted value
 		})
-
+	
+	# ==========================================
+	# STEP 4: GET ITEMS FROM PURCHASE RECEIPTS
+	# ==========================================
+	
 	lcv.get_items_from_purchase_receipts()
-
+	
 	if not lcv.items:
-		frappe.throw(_("Purchase Receiptlarda itemlar topilmadi"))
-
+		frappe.throw(_("❌ Purchase Receiptlarda itemlar topilmadi. LCV yaratib bo'lmaydi."))
+	
+	frappe.logger().info(f"Items loaded: {len(lcv.items)} items from {len(pr_list)} PR(s)")
+	
+	# ==========================================
+	# STEP 5: GET TRANSPORT EXPENSE ACCOUNT (STRICT)
+	# ==========================================
+	
 	expense_account = get_transport_expense_account(doc.company)
-
-	company_currency = frappe.get_cached_value('Company', doc.company, 'default_currency')
-	description = _("Transport Xarajati: {0:,.2f} {1}").format(original_amount, original_currency)
-	if original_currency != company_currency:
-		description += _(" (Rate: {0:,.4f}, = {1:,.2f} {2})").format(
-			exchange_rate, transport_amount, company_currency
+	
+	# Verify it's NOT the Stock Received But Not Billed account
+	account_type = frappe.db.get_value("Account", expense_account, "account_type")
+	if account_type == "Stock Received But Not Billed":
+		frappe.throw(
+			_(f"❌ XATO: Transport uchun noto'g'ri hisob tanlandi!<br><br>"
+			  f"<b>Tanlangan:</b> {expense_account} ({account_type})<br><br>"
+			  f"<b>Kerak bo'lgan:</b> Expense Included In Valuation yoki Direct Expense")
 		)
-
+	
+	# ==========================================
+	# STEP 6: CREATE DESCRIPTION WITH FULL DETAILS
+	# ==========================================
+	
+	description = f"Transport: {original_amount:,.2f} {original_currency}"
+	
+	if original_currency != company_currency:
+		description += f" (Rate: {exchange_rate:,.4f})"
+	
+	frappe.logger().info(f"LCV Tax Entry:")
+	frappe.logger().info(f"  - Description: {description}")
+	frappe.logger().info(f"  - Amount: {transport_amount:,.2f} {company_currency}")
+	frappe.logger().info(f"  - Expense Account: {expense_account} ({account_type})")
+	
+	# ==========================================
+	# STEP 7: ADD TAX/CHARGES
+	# ==========================================
+	
 	lcv.append("taxes", {
 		"expense_account": expense_account,
 		"description": description,
 		"amount": flt(transport_amount)
 	})
-
-	allocation_method = getattr(doc, 'custom_lcv_allocation', 'Amount')
+	
+	# ==========================================
+	# STEP 8: SET ALLOCATION METHOD (STRICT MAPPING)
+	# ==========================================
+	
+	allocation_method = getattr(doc, 'custom_lcv_allocation', None)
+	
+	# STRICT MAPPING according to business requirements
 	if allocation_method == "Qty":
 		lcv.distribute_charges_based_on = "Qty"
-	elif allocation_method == "Percent":
-		lcv.distribute_charges_based_on = "Distribute Manually"
-	else:
+		frappe.logger().info(f"Allocation Method: Qty -> Qty")
+	elif allocation_method == "Amount":
 		lcv.distribute_charges_based_on = "Amount"
-
+		frappe.logger().info(f"Allocation Method: Amount -> Amount")
+	elif allocation_method == "Manually":
+		lcv.distribute_charges_based_on = "Distribute Manually"
+		frappe.logger().info(f"Allocation Method: Manually -> Distribute Manually")
+	elif allocation_method is None or allocation_method == "":
+		# ONLY if field is completely empty, default to Amount
+		lcv.distribute_charges_based_on = "Amount"
+		frappe.logger().info(f"Allocation Method: NULL/Empty -> Amount (DEFAULT)")
+	else:
+		# Unknown value - throw error instead of guessing
+		frappe.throw(
+			_(f"❌ Noto'g'ri allocation method: '{allocation_method}'<br><br>"
+			  f"<b>Qabul qilinadigan qiymatlar:</b><br>"
+			  f"• Qty<br>"
+			  f"• Amount<br>"
+			  f"• Manually")
+		)
+	
+	# ==========================================
+	# STEP 9: SAVE AND SUBMIT
+	# ==========================================
+	
 	lcv.flags.ignore_permissions = True
 	lcv.save()
 	lcv.submit()
-
-	frappe.logger().info(f"Transport LCV {lcv.name} created - Amount: {transport_amount:,.2f}")
-
+	
+	frappe.logger().info(f"=" * 80)
+	frappe.logger().info(f"✅ Transport LCV {lcv.name} SUCCESSFULLY CREATED")
+	frappe.logger().info(f"   Total Amount: {transport_amount:,.2f} {company_currency}")
+	frappe.logger().info(f"   Distribution: {lcv.distribute_charges_based_on}")
+	frappe.logger().info(f"=" * 80)
+	
 	return lcv
 
 
@@ -554,12 +671,6 @@ def get_matching_pr_item_for_pi_item(pi_item):
 def create_price_variance_lcv_fixed(doc, variance_items):
 	"""
 	✅ FIXED: Har bir itemga to'g'ri variance qo'llash
-	
-	CRITICAL FIXES:
-	1. Uses "Stock Received But Not Billed" (SRBNB) account instead of variance account
-	2. Converts PR grand_total to Company Currency before adding to LCV
-	3. Sets distribute_charges_based_on = "Distribute Manually"
-	4. Applies exact variance per item programmatically
 	"""
 
 	try:
@@ -570,10 +681,8 @@ def create_price_variance_lcv_fixed(doc, variance_items):
 			for item in variance_items
 		)
 
-		# Validation: Skip if variance is too small (rounding errors)
 		if abs(total_variance) < 0.01:
-			frappe.logger().info(f"PI {doc.name}: Variance too small ({total_variance:.4f}), skipping LCV")
-			return None
+			frappe.throw(_("Total variance juda kichik"))
 
 		pr_names = list(set(item['pi_item'].purchase_receipt for item in variance_items))
 
@@ -581,50 +690,36 @@ def create_price_variance_lcv_fixed(doc, variance_items):
 		lcv.company = doc.company
 		lcv.posting_date = doc.posting_date or nowdate()
 
-		# ✅ FIX #2: Convert PR grand_total to Company Currency
 		for pr_name in pr_names:
 			pr_doc = frappe.get_cached_doc("Purchase Receipt", pr_name)
-			
-			# Get PR conversion rate (PR Currency -> Company Currency)
-			pr_conversion_rate = flt(pr_doc.conversion_rate) or 1.0
-			
-			# Convert PR grand_total to Company Currency
-			# Formula: amount_in_company_currency = amount * conversion_rate
-			pr_grand_total_company = flt(pr_doc.grand_total) * pr_conversion_rate
-			
-			frappe.logger().info(
-				f"PR {pr_name}: Grand Total {pr_doc.grand_total:.2f} {pr_doc.currency} "
-				f"(rate: {pr_conversion_rate:.6f}) → {pr_grand_total_company:.2f} {company_currency}"
-			)
-			
 			lcv.append("purchase_receipts", {
 				"receipt_document_type": "Purchase Receipt",
 				"receipt_document": pr_name,
 				"supplier": pr_doc.supplier,
-				"grand_total": pr_grand_total_company  # ✅ NOW IN COMPANY CURRENCY
+				"grand_total": pr_doc.grand_total
 			})
 
-		# ✅ FIX #1: Use SRBNB account instead of variance account
-		# This ensures proper accounting: Credit SRBNB (clear balance), Debit Stock
-		srbnb_account = get_stock_received_but_not_billed_account(doc.company)
+		variance_account = get_purchase_price_variance_account(doc.company)
 
 		lcv.append("taxes", {
-			"description": f"Price Variance from PI {doc.name} (Auto) - Clears SRBNB Balance",
-			"expense_account": srbnb_account,  # ✅ CRITICAL: Use SRBNB, not variance account
+			"description": f"Price Variance from PI {doc.name} (Auto)",
+			"expense_account": variance_account,
 			"amount": total_variance
 		})
 
 		lcv.flags.ignore_permissions = True
 		lcv.insert()
+		
+		# Get items FIRST
 		lcv.get_items_from_purchase_receipts()
 
-		# ✅ FIX #3: Set to manual distribution BEFORE applying variance
+		# ✅ CRITICAL: Set to manual distribution BEFORE applying variance
 		lcv.distribute_charges_based_on = "Distribute Manually"
 
-		# ✅ FIX #4: Apply exact variance to each specific item
+		# ✅ FIXED: To'g'ri variance distribution - items oldin olingan bo'lishi kerak
 		apply_variance_to_items_fixed(lcv, variance_items)
 
-		# Save changes
+		# Save changes WITHOUT validation (validation will recalculate)
 		lcv.flags.ignore_validate = False
 		lcv.save()
 		
@@ -632,14 +727,6 @@ def create_price_variance_lcv_fixed(doc, variance_items):
 		lcv.submit()
 
 		frappe.db.commit()
-
-		frappe.logger().info(
-			f"✅ LCV {lcv.name} created successfully:\n"
-			f"   - Total Variance: {total_variance:.2f} {company_currency}\n"
-			f"   - Items with variance: {len(variance_items)}\n"
-			f"   - SRBNB Account: {srbnb_account}\n"
-			f"   - Distribution: Manual (per-item)"
-		)
 
 		return lcv
 
@@ -653,114 +740,79 @@ def create_price_variance_lcv_fixed(doc, variance_items):
 
 def apply_variance_to_items_fixed(lcv, variance_items):
 	"""
-	✅ FIXED: Applies exact variance to each specific LCV item programmatically.
-	
-	CRITICAL LOGIC:
-	- Sets `applicable_charges` field for items WITH variance
-	- Sets `applicable_charges = 0` for items WITHOUT variance
-	- Uses PR item name as unique identifier for matching
-	
-	This ensures:
-	- Item A with +$2.00 variance → applicable_charges = 2.0
-	- Item B with +$3.00 variance → applicable_charges = 3.0
-	- Item C with  $0.00 variance → applicable_charges = 0.0
-	
-	Args:
-		lcv: Landed Cost Voucher document (after get_items_from_purchase_receipts())
-		variance_items: List of items with variance data
+	✅ FIXED: Har bir itemga faqat o'zining variance ini qo'llash
+
+	TUZATISHLAR:
+	1. PR item name orqali aniq matching
+	2. Faqat narxida o'zgargan itemlar uchun
+	3. Narxida o'zgarmagan itemlar: applicable_charges = 0
 	"""
 
-	if not lcv.items:
-		frappe.throw(_("LCV has no items. Call get_items_from_purchase_receipts() first."))
-
-	# Build variance map: PR item name → variance amount
+	# Variance map: PR item name -> variance amount
 	variance_map = {}
-	
 	for item_data in variance_items:
 		pr_item_name = item_data['pr_item']['name']
 		variance = item_data['variance']['variance_company_currency']
 
-		# Handle duplicate PR items (same item added twice with different prices)
+		# ✅ Agar bir xil PR item bir necha marta bo'lsa - qo'shib borish
 		if pr_item_name in variance_map:
 			variance_map[pr_item_name] += variance
 			frappe.logger().warning(
-				f"⚠️ Duplicate PR item {pr_item_name} - cumulative variance: {variance_map[pr_item_name]:.2f}"
+				f"⚠️ Duplicate PR item {pr_item_name} - adding variance: {variance:.2f}"
 			)
 		else:
 			variance_map[pr_item_name] = variance
 
 	frappe.logger().info(f"\n{'=' * 60}")
-	frappe.logger().info(f"VARIANCE DISTRIBUTION (Manual Per-Item)")
-	frappe.logger().info(f"Items with variance: {len(variance_map)}")
-	frappe.logger().info(f"Total LCV items: {len(lcv.items)}")
+	frappe.logger().info(f"VARIANCE DISTRIBUTION (FIXED)")
+	frappe.logger().info(f"O'zgargan itemlar: {len(variance_map)}")
 	frappe.logger().info(f"{'=' * 60}")
 
 	total_applied = 0.0
-	items_with_variance = 0
-	items_without_variance = 0
+	items_updated = 0
+	items_unchanged = 0
 
-	# Iterate through LCV items and apply variance
 	for lcv_item in lcv.items:
-		# Match by PR item reference
-		pr_item_ref = lcv_item.purchase_receipt_item
-		
-		if pr_item_ref in variance_map:
-			# This item has variance - apply it
-			variance_amount = variance_map[pr_item_ref]
+		if lcv_item.purchase_receipt_item in variance_map:
+			variance_amount = variance_map[lcv_item.purchase_receipt_item]
 			lcv_item.applicable_charges = variance_amount
 			total_applied += variance_amount
-			items_with_variance += 1
+			items_updated += 1
 
 			sign = "+" if variance_amount > 0 else ""
 			frappe.logger().info(
-				f"✓ {lcv_item.item_code} (Row {lcv_item.idx}): "
-				f"{sign}{variance_amount:,.4f} "
-				f"[PR Item: {pr_item_ref}]"
+				f"✓ {lcv_item.item_code}: {sign}{variance_amount:,.2f} "
+				f"(PR Item: {lcv_item.purchase_receipt_item})"
 			)
 		else:
-			# This item has NO variance - set to 0
 			lcv_item.applicable_charges = 0.0
-			items_without_variance += 1
-			
+			items_unchanged += 1
 			frappe.logger().debug(
-				f"○ {lcv_item.item_code} (Row {lcv_item.idx}): "
-				f"0.00 (no price change) "
-				f"[PR Item: {pr_item_ref}]"
+				f"○ {lcv_item.item_code}: 0.00 (narxida o'zgarish yo'q) "
+				f"(PR Item: {lcv_item.purchase_receipt_item})"
 			)
 
-	# Calculate totals for validation
-	total_variance_expected = sum(variance_map.values())
-	diff = abs(total_applied - total_variance_expected)
+	total_variance = sum(variance_map.values())
+	diff = abs(total_applied - total_variance)
 
 	frappe.logger().info(f"\n{'=' * 60}")
 	frappe.logger().info(f"DISTRIBUTION SUMMARY:")
-	frappe.logger().info(f"  Expected total:      {total_variance_expected:,.4f}")
-	frappe.logger().info(f"  Applied total:       {total_applied:,.4f}")
-	frappe.logger().info(f"  Difference:          {diff:,.4f}")
-	frappe.logger().info(f"  Items with variance: {items_with_variance}")
-	frappe.logger().info(f"  Items unchanged:     {items_without_variance}")
+	frappe.logger().info(f"  Kutilayotgan jami: {total_variance:,.2f}")
+	frappe.logger().info(f"  Qo'yilgan jami:   {total_applied:,.2f}")
+	frappe.logger().info(f"  Farq:             {diff:,.2f}")
+	frappe.logger().info(f"  Updated items:    {items_updated}")
+	frappe.logger().info(f"  Unchanged items:  {items_unchanged}")
 	frappe.logger().info(f"{'=' * 60}\n")
 
-	# Validation: Ensure applied variance matches expected variance
 	if diff > 0.01:
 		error_msg = (
-			f"❌ LCV Distribution Mismatch!\n\n"
-			f"Expected total variance: {total_variance_expected:,.4f}\n"
-			f"Applied total variance:  {total_applied:,.4f}\n"
-			f"Difference:              {diff:,.4f}\n\n"
-			f"This indicates a mapping error between PI items and PR items."
+			f"LCV Distribution Mismatch!\n"
+			f"Expected: {total_variance:,.2f}\n"
+			f"Applied: {total_applied:,.2f}\n"
+			f"Difference: {diff:,.2f}"
 		)
-		frappe.log_error(
-			title="LCV Distribution Error",
-			message=error_msg + "\n\n" + frappe.get_traceback()
-		)
+		frappe.log_error(title="LCV Distribution Error", message=error_msg)
 		frappe.throw(_(error_msg))
-
-	frappe.logger().info(
-		f"✅ Variance distribution successful: "
-		f"{items_with_variance} items updated, "
-		f"{items_without_variance} items unchanged"
-	)
 
 
 def cancel_linked_lcvs(doc, method):
@@ -895,187 +947,140 @@ def get_pr_data_batch(pr_names):
 
 def calculate_variance_smart(pi_item, pi_doc, pr_item, pr_data, company_currency):
 	"""
-	Calculates price variance between PR and PI in Company Currency.
+	Narx farqini hisoblaydi - FAQAT HAQIQIY NARX O'ZGARISHINI ANIQLAYDI
 	
-	✅ FIXED LOGIC:
-	1. Convert PR rate to Company Currency: pr_rate * pr_conversion_rate
-	2. Convert PI rate to Company Currency: pi_rate * pi_conversion_rate
-	3. Calculate variance: (pi_rate_company - pr_rate_company) * qty
-	4. Handle same-currency scenario (no double conversion)
-	
-	CRITICAL: All variance must be in Company Currency for LCV to work correctly.
-	
-	Args:
-		pi_item: Purchase Invoice Item
-		pi_doc: Purchase Invoice Document
-		pr_item: Purchase Receipt Item (dict)
-		pr_data: Purchase Receipt data (dict with currency, conversion_rate)
-		company_currency: Company's default currency
-		
-	Returns:
-		dict: Variance calculation details
+	LOGIC:
+	1. PR rate'ni company currency'ga convert qilish
+	2. PI rate'ni company currency'ga convert qilish  
+	3. Rate farqini hisoblash (company currency'da)
+	4. Total variance = rate_diff * qty
 	"""
 
 	qty = flt(pi_item.qty)
-	
-	# Get conversion rates (already in correct direction: transaction → company)
-	pr_conversion_rate = flt(pr_data.get('conversion_rate', 1.0))
-	pi_conversion_rate = flt(pi_doc.conversion_rate)
-	
-	# Validate conversion rates
-	if pr_conversion_rate <= 0:
-		frappe.throw(_(f"Invalid PR conversion rate: {pr_conversion_rate}"))
-	if pi_conversion_rate <= 0:
-		frappe.throw(_(f"Invalid PI conversion rate: {pi_conversion_rate}"))
-	
-	pr_currency = pr_data.get('currency')
-	pi_currency = pi_doc.currency
-	
-	pr_rate = flt(pr_item.get('rate', 0))
-	pi_rate = flt(pi_item.rate)
-	
-	# ✅ CRITICAL: Convert both rates to Company Currency
-	# Formula: amount_in_company_currency = amount * conversion_rate
-	
-	if pr_currency == company_currency:
-		# PR already in company currency - no conversion needed
-		pr_rate_company = pr_rate
-	else:
-		# Convert PR rate to company currency
-		pr_rate_company = pr_rate * pr_conversion_rate
-	
-	if pi_currency == company_currency:
-		# PI already in company currency - no conversion needed
-		pi_rate_company = pi_rate
-	else:
-		# Convert PI rate to company currency
-		pi_rate_company = pi_rate * pi_conversion_rate
-	
-	# Calculate rate difference in company currency
+
+	# PR rate → company currency
+	pr_rate_company = convert_to_company_currency(
+		amount=flt(pr_item['rate']),
+		from_currency=pr_data['currency'],
+		to_currency=company_currency,
+		exchange_rate=flt(pr_data['conversion_rate'])
+	)
+
+	# PI rate → company currency
+	pi_rate_company = convert_to_company_currency(
+		amount=flt(pi_item.rate),
+		from_currency=pi_doc.currency,
+		to_currency=company_currency,
+		exchange_rate=flt(pi_doc.conversion_rate)
+	)
+
+	# Rate difference (in company currency)
 	rate_diff = pi_rate_company - pr_rate_company
-	
-	# Calculate total variance
 	variance_total = rate_diff * qty
-	
-	# Determine if there's a real price change (not just rounding)
-	has_real_change = abs(rate_diff) > 0.0001
-	
-	# ✅ DETAILED LOGGING
-	frappe.logger().info(
+
+	# ✅ DEBUG LOGGING
+	frappe.logger().debug(
 		f"\n{'='*60}\n"
 		f"VARIANCE CALCULATION:\n"
-		f"  Item: {pi_item.item_code}\n"
+		f"  PR: {pr_item['rate']:.2f} {pr_data['currency']} "
+		f"(rate: {pr_data['conversion_rate']:.4f}) → {pr_rate_company:.2f} {company_currency}\n"
+		f"  PI: {pi_item.rate:.2f} {pi_doc.currency} "
+		f"(rate: {pi_doc.conversion_rate:.4f}) → {pi_rate_company:.2f} {company_currency}\n"
+		f"  Rate Diff: {rate_diff:.2f} {company_currency}\n"
 		f"  Qty: {qty:.2f}\n"
-		f"  ---\n"
-		f"  PR: {pr_rate:.4f} {pr_currency} × {pr_conversion_rate:.6f} = {pr_rate_company:.4f} {company_currency}\n"
-		f"  PI: {pi_rate:.4f} {pi_currency} × {pi_conversion_rate:.6f} = {pi_rate_company:.4f} {company_currency}\n"
-		f"  ---\n"
-		f"  Rate Diff: {rate_diff:.4f} {company_currency}\n"
-		f"  Total Variance: {variance_total:.4f} {company_currency}\n"
-		f"  Real Change: {has_real_change}\n"
+		f"  Total Variance: {variance_total:.2f} {company_currency}\n"
 		f"{'='*60}"
 	)
 
 	return {
-		'pr_rate': pr_rate,
-		'pr_currency': pr_currency,
+		'pr_rate': pr_item['rate'],
+		'pr_currency': pr_data['currency'],
 		'pr_rate_company': pr_rate_company,
-		'pr_exchange_rate': pr_conversion_rate,
-		'pi_rate': pi_rate,
-		'pi_currency': pi_currency,
+		'pi_rate': pi_item.rate,
+		'pi_currency': pi_doc.currency,
 		'pi_rate_company': pi_rate_company,
-		'pi_exchange_rate': pi_conversion_rate,
 		'qty': qty,
 		'rate_diff': rate_diff,
 		'variance_company_currency': variance_total,
 		'company_currency': company_currency,
-		'has_real_price_change': has_real_change
+		'pr_exchange_rate': pr_data['conversion_rate'],
+		'pi_exchange_rate': pi_doc.conversion_rate,
+		'has_real_price_change': abs(rate_diff) > 0.0001
 	}
 
 
-def get_stock_received_but_not_billed_account(company):
-	"""
-	Gets the company's default "Stock Received But Not Billed" (SRBNB) account.
-	
-	ACCOUNTING LOGIC:
-	- When PI rate > PR rate, ERPNext debits the difference to SRBNB (leaving a balance)
-	- The LCV must use SRBNB as expense_account to credit it (clearing the balance)
-	- This ensures: LCV Credits SRBNB, Debits Stock Account
-	
-	DO NOT use a separate "Purchase Price Variance" account!
-	"""
-	
-	# Method 1: Get from Company defaults
-	srbnb_account = frappe.get_cached_value('Company', company, 'stock_received_but_not_billed')
-	
-	if srbnb_account and frappe.db.exists("Account", srbnb_account):
-		disabled = frappe.db.get_value("Account", srbnb_account, "disabled")
-		if not disabled:
-			frappe.logger().info(f"Using company default SRBNB: {srbnb_account}")
-			return srbnb_account
-	
-	# Method 2: Search by account type
+def get_purchase_price_variance_account(company):
+	"""Purchase Price Variance account ni topadi"""
+
 	abbr = frappe.get_cached_value("Company", company, "abbr")
-	
-	srbnb_account = frappe.db.get_value(
+	account_name = f"Purchase Price Variance - {abbr}"
+
+	if frappe.db.exists("Account", account_name):
+		return account_name
+
+	accounts = frappe.db.get_all(
 		"Account",
-		filters={
-			"company": company,
-			"account_type": "Stock Received But Not Billed",
-			"is_group": 0,
-			"disabled": 0
-		},
-		fieldname="name"
-	)
-	
-	if srbnb_account:
-		frappe.logger().info(f"Found SRBNB by account type: {srbnb_account}")
-		return srbnb_account
-	
-	# Method 3: Search by name pattern
-	srbnb_accounts = frappe.db.get_all(
-		"Account",
-		filters={
-			"company": company,
-			"is_group": 0,
-			"disabled": 0
-		},
+		filters={"company": company, "is_group": 0, "disabled": 0},
 		fields=["name", "account_name"]
 	)
-	
-	for acc in srbnb_accounts:
+
+	for acc in accounts:
 		acc_lower = acc.account_name.lower()
-		if "stock received but not billed" in acc_lower or "srbnb" in acc_lower:
-			frappe.logger().info(f"Found SRBNB by name pattern: {acc.name}")
+		if "purchase price variance" in acc_lower or "price variance" in acc_lower:
 			return acc.name
-	
-	# Error: SRBNB account not found
-	frappe.throw(
-		_(f"❌ Stock Received But Not Billed account not found for company {company}.<br><br>"
-		  "<b>Please configure:</b><br>"
-		  "1. Go to Company {0}<br>"
-		  "2. Set 'Stock Received But Not Billed' account<br>"
-		  "3. Or create an account with Account Type = 'Stock Received But Not Billed'").format(company)
+
+	stock_adj = frappe.db.get_value(
+		"Account",
+		{"company": company, "account_type": "Stock Adjustment", "is_group": 0, "disabled": 0},
+		"name"
 	)
+	if stock_adj:
+		return stock_adj
+
+	return create_purchase_price_variance_account(company)
 
 
-def get_purchase_price_variance_account(company):
-	"""
-	⚠️ DEPRECATED: DO NOT USE THIS FUNCTION
-	
-	This function creates a separate "Purchase Price Variance" account,
-	which causes accounting errors. Use get_stock_received_but_not_billed_account() instead.
-	
-	Kept for backward compatibility only.
-	"""
-	
-	frappe.logger().warning(
-		"⚠️ DEPRECATED: get_purchase_price_variance_account() called. "
-		"Use get_stock_received_but_not_billed_account() instead!"
-	)
-	
-	# Redirect to correct function
-	return get_stock_received_but_not_billed_account(company)
+def create_purchase_price_variance_account(company):
+	"""Purchase Price Variance account yaratadi"""
+
+	try:
+		abbr = frappe.get_cached_value("Company", company, "abbr")
+
+		parent_account = frappe.db.get_value(
+			"Account",
+			{"company": company, "account_type": "Stock Adjustment", "is_group": 1},
+			"name"
+		)
+
+		if not parent_account:
+			parent_account = frappe.db.get_value(
+				"Account",
+				{"company": company, "account_name": "Indirect Expenses", "is_group": 1},
+				"name"
+			)
+
+		if not parent_account:
+			frappe.throw(_("Parent account topilmadi!"))
+
+		account = frappe.get_doc({
+			"doctype": "Account",
+			"account_name": "Purchase Price Variance",
+			"company": company,
+			"parent_account": parent_account,
+			"account_type": "Stock Adjustment",
+			"is_group": 0
+		})
+		account.insert(ignore_permissions=True)
+		frappe.db.commit()
+
+		return account.name
+
+	except Exception as e:
+		frappe.log_error(
+			title="Failed to create Purchase Price Variance account",
+			message=frappe.get_traceback()
+		)
+		frappe.throw(_("Account yaratilmadi: {0}").format(str(e)))
 
 
 # ============================================================
