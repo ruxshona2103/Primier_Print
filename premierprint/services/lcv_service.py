@@ -1089,31 +1089,127 @@ def create_purchase_price_variance_account(company):
 
 def convert_to_company_currency(amount, from_currency, to_currency, exchange_rate):
 	"""
-	Valyuta konvertatsiyasi - FIXED VERSION
+	Valyuta konvertatsiyasi - SMART RATE LOGIC VERSION
 	
-	Frappe Logic:
-	- conversion_rate = 1 base unit of transaction currency = X units of company currency
-	- Agar PI currency = USD, company = UZS, rate = 12000
-	  → 1 USD = 12000 UZS
-	- Agar PI currency = UZS, company = USD, rate = 0.000083
-	  → 1 UZS = 0.000083 USD
+	HANDLES TWO SCENARIOS:
 	
-	Formula: amount_in_company_currency = amount * conversion_rate
+	Scenario 1: Standard Frappe Rate (rate < 1.0)
+	  - Example: 1 UZS = 0.000083 USD
+	  - Formula: amount * rate
+	  - 10,000 UZS * 0.000083 = 0.83 USD ✅
+	
+	Scenario 2: Market Rate (rate > 1.0)
+	  - Example: 1 USD = 12,099 UZS (user inputs this manually)
+	  - But we need to convert FROM the smaller currency TO the larger
+	  - Formula: amount / rate
+	  - 10,000 UZS / 12,099 = 0.82 USD ✅
+	
+	THE LOGIC:
+	  - If rate < 1.0 → Use MULTIPLICATION (standard Frappe conversion)
+	  - If rate > 1.0 → Use DIVISION (market rate input)
+	  - If rate = 1.0 → Same currency or 1:1 exchange
+	
+	Args:
+		amount: Amount in source currency
+		from_currency: Source currency code
+		to_currency: Target (company) currency code
+		exchange_rate: Exchange rate value
+	
+	Returns:
+		float: Amount converted to company currency
 	"""
-
+	
+	# ==========================================
+	# STEP 1: STRICT VALIDATION
+	# ==========================================
+	
 	amount = flt(amount)
-	exchange_rate = flt(exchange_rate) or 1.0
-
+	exchange_rate = flt(exchange_rate)
+	
+	# STRICT: Do NOT default to 1.0 if rate is 0
 	if exchange_rate <= 0:
-		frappe.throw(_("Exchange rate 0 bo'lishi mumkin emas"))
-
-	# Agar bir xil valyuta bo'lsa
+		frappe.throw(
+			_(f"❌ CRITICAL ERROR: Exchange rate noto'g'ri!<br><br>"
+			  f"<b>From:</b> {from_currency}<br>"
+			  f"<b>To:</b> {to_currency}<br>"
+			  f"<b>Rate:</b> {exchange_rate}<br><br>"
+			  f"Exchange rate 0 yoki manfiy bo'lishi mumkin emas.")
+		)
+	
+	# ==========================================
+	# STEP 2: SAME CURRENCY CHECK
+	# ==========================================
+	
 	if from_currency == to_currency:
+		frappe.logger().info(
+			f"💱 CURRENCY CONVERSION: Same currency ({from_currency}), "
+			f"returning original amount: {amount:,.2f}"
+		)
 		return amount
-
-	# ✅ UNIVERSAL FORMULA: amount * conversion_rate
-	# Frappe'da conversion_rate allaqachon to'g'ri yo'nalishda
-	return amount * exchange_rate
+	
+	# ==========================================
+	# STEP 3: SMART RATE LOGIC
+	# ==========================================
+	
+	if exchange_rate == 1.0:
+		# Edge case: 1:1 exchange rate
+		result = amount
+		operation = "EQUAL (1:1)"
+		frappe.logger().info(
+			f"💱 CURRENCY CONVERSION: 1:1 rate detected\n"
+			f"   {amount:,.2f} {from_currency} = {result:,.2f} {to_currency}"
+		)
+	
+	elif exchange_rate < 1.0:
+		# STANDARD FRAPPE LOGIC: Small rate means multiply
+		# Example: 1 UZS = 0.000083 USD
+		# 10,000 UZS * 0.000083 = 0.83 USD
+		result = amount * exchange_rate
+		operation = "MULTIPLY"
+		
+		frappe.logger().info(
+			f"💱 CURRENCY CONVERSION: Standard Rate (< 1.0)\n"
+			f"   Operation: {operation}\n"
+			f"   Formula: {amount:,.2f} × {exchange_rate:,.6f}\n"
+			f"   Result: {amount:,.2f} {from_currency} = {result:,.2f} {to_currency}"
+		)
+	
+	else:  # exchange_rate > 1.0
+		# MARKET RATE LOGIC: Large rate means divide
+		# Example: User inputs "1 USD = 12,099 UZS"
+		# But we're converting FROM UZS TO USD
+		# So: 10,000 UZS / 12,099 = 0.82 USD
+		result = amount / exchange_rate
+		operation = "DIVIDE"
+		
+		frappe.logger().info(
+			f"💱 CURRENCY CONVERSION: Market Rate (> 1.0)\n"
+			f"   Operation: {operation}\n"
+			f"   Formula: {amount:,.2f} ÷ {exchange_rate:,.2f}\n"
+			f"   Result: {amount:,.2f} {from_currency} = {result:,.2f} {to_currency}\n"
+			f"   ⚠️  NOTE: Rate > 1.0 detected - using DIVISION to prevent astronomical values"
+		)
+	
+	# ==========================================
+	# STEP 4: SANITY CHECK
+	# ==========================================
+	
+	# Detect obviously wrong conversions (e.g., 10,000 UZS becoming 120 million USD)
+	if result > amount * 1000:
+		frappe.log_error(
+			message=(
+				f"⚠️  SUSPICIOUS CONVERSION DETECTED:\n"
+				f"Amount: {amount:,.2f} {from_currency}\n"
+				f"Rate: {exchange_rate:,.6f}\n"
+				f"Result: {result:,.2f} {to_currency}\n"
+				f"Operation: {operation}\n\n"
+				f"This conversion resulted in a value 1000x larger than input. "
+				f"Please verify the exchange rate is correct."
+			),
+			title=f"Suspicious Currency Conversion: {from_currency} → {to_currency}"
+		)
+	
+	return flt(result)
 
 
 # ============================================================
