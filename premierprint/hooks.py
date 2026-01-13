@@ -186,11 +186,11 @@ doc_events = {
 
 # Scheduled Tasks
 # ---------------
-scheduler_events = {
-    "hourly": [
-        "premierprint.utils.utils.update_cbu_exchange_rate"
-    ],
-}
+# scheduler_events = {
+#     "hourly": [
+#         "premierprint.utils.utils.update_cbu_exchange_rate"
+#     ],
+# }
 
 
 # Client Scripts
@@ -207,7 +207,8 @@ doctype_js = {
 	"Purchase Order": "public/js/purchase_order.js",
 	"Purchase Invoice": "public/js/purchase_invoice.js",
 	"Item": "public/js/item.js",
-	"Payment Entry": "public/js/payment_entry.js"
+	"Payment Entry": "public/js/payment_entry.js",
+	"Stock Entry": "public/js/stock_entry.js"
 }
 
 # scheduler_events = {
