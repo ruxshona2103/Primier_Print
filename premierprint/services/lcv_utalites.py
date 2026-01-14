@@ -1,34 +1,16 @@
 """
-Landed Cost Voucher (LCV) Management Module - UNIFIED CURRENCY CONVERSION
-==========================================================================
+Landed Cost Voucher (LCV) Management Module - FIXED VERSION
+============================================================
 
 ASOSIY TUZATISHLAR:
 1. ✅ Har bir PI item uchun alohida variance hisoblash
 2. ✅ PR-PI item juftligini unique tracking qilish
 3. ✅ Variance distribution xatosini bartaraf etish
 4. ✅ Bir xil item turli narxlarda kelganda aralashmaslik
-5. ✅ UNIFIED CURRENCY CONVERSION - Barcha konversiyalar bitta helper orqali
-
-CRITICAL ARCHITECTURE PRINCIPLE:
-================================
-ALL CURRENCY CONVERSIONS MUST USE: convert_to_company_currency()
-
-This function implements SMART RATE LOGIC:
-  - Rate < 1.0 → MULTIPLY (Standard Frappe: 1 UZS = 0.000083 USD)
-  - Rate > 1.0 → DIVIDE (Market Rate: 1 USD = 12,099 UZS)
-
-NEVER perform direct multiplication/division with conversion_rate or exchange_rate
-outside of convert_to_company_currency() function!
-
-WHY THIS MATTERS:
-- Transport LCV and Price Variance LCV must use IDENTICAL conversion logic
-- Prevents "fixing one breaks the other" syndrome
-- Handles both system rates and user-entered market rates correctly
-- Eliminates astronomical value bugs (e.g., 10,000 UZS → 120 million USD)
 
 Author: Premier Print Development Team
-Version: 3.0-UNIFIED
-Last Updated: 2026-01-13
+Version: 2.2-FIXED
+Last Updated: 2025-01-12
 """
 
 import frappe
@@ -271,198 +253,57 @@ def create_lcv_from_pi(doc, method):
 
 def create_transport_lcv(doc, pr_list, transport_amount, original_amount,
 						 original_currency, exchange_rate):
-	"""
-	Transport xarajati uchun LCV yaratadi - STRICT VERSION
-	
-	CRITICAL BUSINESS RULES:
-	1. PR currency conversion MUST be validated (no defaults allowed)
-	2. Allocation method mapping MUST be strict
-	3. Transport expense account MUST be used (NOT Stock Received But Not Billed)
-	4. All conversions MUST be logged for debugging
-	
-	Args:
-		doc: Purchase Invoice document
-		pr_list: List of Purchase Receipt names
-		transport_amount: Transport cost in company currency (already converted)
-		original_amount: Original transport amount in transaction currency
-		original_currency: Transaction currency
-		exchange_rate: Exchange rate used for conversion
-	
-	Returns:
-		Landed Cost Voucher document
-	"""
-	
-	# ==========================================
-	# STEP 1: STRICT VALIDATION
-	# ==========================================
-	
-	if not pr_list or len(pr_list) == 0:
-		frappe.throw(_("❌ Purchase Receipt list bo'sh. Transport LCV yaratib bo'lmaydi."))
-	
-	if not transport_amount or flt(transport_amount) <= 0:
-		frappe.throw(_("❌ Transport amount 0 yoki manfiy. LCV yaratib bo'lmaydi."))
-	
-	# ==========================================
-	# STEP 2: CREATE LCV DOCUMENT
-	# ==========================================
-	
+	"""Transport xarajati uchun LCV yaratadi"""
+
 	lcv = frappe.new_doc("Landed Cost Voucher")
 	lcv.company = doc.company
 	lcv.posting_date = doc.posting_date
-	
-	company_currency = frappe.get_cached_value('Company', doc.company, 'default_currency')
-	
-	frappe.logger().info(f"=" * 80)
-	frappe.logger().info(f"CREATING TRANSPORT LCV FOR PI: {doc.name}")
-	frappe.logger().info(f"Company: {doc.company} | Currency: {company_currency}")
-	frappe.logger().info(f"=" * 80)
-	
-	# ==========================================
-	# STEP 3: ADD PURCHASE RECEIPTS WITH STRICT VALIDATION
-	# ==========================================
-	
+
 	for pr_name in pr_list:
-		# Fetch PR data with conversion_rate
-		pr_data = frappe.db.get_value(
-			"Purchase Receipt",
-			pr_name,
-			["grand_total", "conversion_rate", "currency"],
-			as_dict=True
-		)
-		
-		if not pr_data:
-			frappe.throw(_(f"❌ Purchase Receipt {pr_name} topilmadi yoki o'chirilgan."))
-		
-		pr_grand_total = flt(pr_data.get("grand_total"))
-		pr_conversion_rate = flt(pr_data.get("conversion_rate"))
-		pr_currency = pr_data.get("currency")
-		
-		# STRICT VALIDATION: conversion_rate MUST be valid
-		if pr_conversion_rate <= 0 or pr_conversion_rate is None:
-			frappe.throw(
-				_(f"❌ CRITICAL ERROR: Purchase Receipt {pr_name} da conversion_rate noto'g'ri yoki 0!<br><br>"
-				  f"<b>Topilgan qiymat:</b> {pr_conversion_rate}<br>"
-				  f"<b>PR Currency:</b> {pr_currency}<br>"
-				  f"<b>Company Currency:</b> {company_currency}<br><br>"
-				  f"<b>Tuzatish:</b> Purchase Receipt ni ochib, conversion_rate ni to'g'rilang va qayta submit qiling.<br>"
-				  f"<b>Formula:</b> 1 {pr_currency} = X {company_currency}")
-			)
-		
-		# ✅ UNIFIED CONVERSION: Use convert_to_company_currency helper
-		# Calculate PR grand_total in company currency using the smart helper
-		pr_grand_total_company = convert_to_company_currency(
-			amount=pr_grand_total,
-			from_currency=pr_currency,
-			to_currency=company_currency,
-			exchange_rate=pr_conversion_rate
-		)
-		
-		frappe.logger().info(f"PR: {pr_name}")
-		frappe.logger().info(f"  - Grand Total: {pr_grand_total:,.2f} {pr_currency}")
-		frappe.logger().info(f"  - Conversion Rate: {pr_conversion_rate:,.4f}")
-		frappe.logger().info(f"  - Grand Total (Company): {pr_grand_total_company:,.2f} {company_currency}")
-		
-		# Add to LCV with CONVERTED grand_total
+		pr_grand_total = frappe.db.get_value("Purchase Receipt", pr_name, "grand_total")
+		if not pr_grand_total:
+			frappe.throw(_(f"Purchase Receipt {pr_name} topilmadi"))
+
 		lcv.append("purchase_receipts", {
 			"receipt_document_type": "Purchase Receipt",
 			"receipt_document": pr_name,
-			"grand_total": pr_grand_total_company  # Use converted value
+			"grand_total": flt(pr_grand_total)
 		})
-	
-	# ==========================================
-	# STEP 4: GET ITEMS FROM PURCHASE RECEIPTS
-	# ==========================================
-	
+
 	lcv.get_items_from_purchase_receipts()
-	
+
 	if not lcv.items:
-		frappe.throw(_("❌ Purchase Receiptlarda itemlar topilmadi. LCV yaratib bo'lmaydi."))
-	
-	frappe.logger().info(f"Items loaded: {len(lcv.items)} items from {len(pr_list)} PR(s)")
-	
-	# ==========================================
-	# STEP 5: GET TRANSPORT EXPENSE ACCOUNT (STRICT)
-	# ==========================================
-	
+		frappe.throw(_("Purchase Receiptlarda itemlar topilmadi"))
+
 	expense_account = get_transport_expense_account(doc.company)
-	
-	# Verify it's NOT the Stock Received But Not Billed account
-	account_type = frappe.db.get_value("Account", expense_account, "account_type")
-	if account_type == "Stock Received But Not Billed":
-		frappe.throw(
-			_(f"❌ XATO: Transport uchun noto'g'ri hisob tanlandi!<br><br>"
-			  f"<b>Tanlangan:</b> {expense_account} ({account_type})<br><br>"
-			  f"<b>Kerak bo'lgan:</b> Expense Included In Valuation yoki Direct Expense")
-		)
-	
-	# ==========================================
-	# STEP 6: CREATE DESCRIPTION WITH FULL DETAILS
-	# ==========================================
-	
-	description = f"Transport: {original_amount:,.2f} {original_currency}"
-	
+
+	company_currency = frappe.get_cached_value('Company', doc.company, 'default_currency')
+	description = _("Transport Xarajati: {0:,.2f} {1}").format(original_amount, original_currency)
 	if original_currency != company_currency:
-		description += f" (Rate: {exchange_rate:,.4f})"
-	
-	frappe.logger().info(f"LCV Tax Entry:")
-	frappe.logger().info(f"  - Description: {description}")
-	frappe.logger().info(f"  - Amount: {transport_amount:,.2f} {company_currency}")
-	frappe.logger().info(f"  - Expense Account: {expense_account} ({account_type})")
-	
-	# ==========================================
-	# STEP 7: ADD TAX/CHARGES
-	# ==========================================
-	
+		description += _(" (Rate: {0:,.4f}, = {1:,.2f} {2})").format(
+			exchange_rate, transport_amount, company_currency
+		)
+
 	lcv.append("taxes", {
 		"expense_account": expense_account,
 		"description": description,
 		"amount": flt(transport_amount)
 	})
-	
-	# ==========================================
-	# STEP 8: SET ALLOCATION METHOD (STRICT MAPPING)
-	# ==========================================
-	
-	allocation_method = getattr(doc, 'custom_lcv_allocation', None)
-	
-	# STRICT MAPPING according to business requirements
+
+	allocation_method = getattr(doc, 'custom_lcv_allocation', 'Amount')
 	if allocation_method == "Qty":
 		lcv.distribute_charges_based_on = "Qty"
-		frappe.logger().info(f"Allocation Method: Qty -> Qty")
-	elif allocation_method == "Amount":
-		lcv.distribute_charges_based_on = "Amount"
-		frappe.logger().info(f"Allocation Method: Amount -> Amount")
-	elif allocation_method == "Manually":
+	elif allocation_method == "Percent":
 		lcv.distribute_charges_based_on = "Distribute Manually"
-		frappe.logger().info(f"Allocation Method: Manually -> Distribute Manually")
-	elif allocation_method is None or allocation_method == "":
-		# ONLY if field is completely empty, default to Amount
-		lcv.distribute_charges_based_on = "Amount"
-		frappe.logger().info(f"Allocation Method: NULL/Empty -> Amount (DEFAULT)")
 	else:
-		# Unknown value - throw error instead of guessing
-		frappe.throw(
-			_(f"❌ Noto'g'ri allocation method: '{allocation_method}'<br><br>"
-			  f"<b>Qabul qilinadigan qiymatlar:</b><br>"
-			  f"• Qty<br>"
-			  f"• Amount<br>"
-			  f"• Manually")
-		)
-	
-	# ==========================================
-	# STEP 9: SAVE AND SUBMIT
-	# ==========================================
-	
+		lcv.distribute_charges_based_on = "Amount"
+
 	lcv.flags.ignore_permissions = True
 	lcv.save()
 	lcv.submit()
-	
-	frappe.logger().info(f"=" * 80)
-	frappe.logger().info(f"✅ Transport LCV {lcv.name} SUCCESSFULLY CREATED")
-	frappe.logger().info(f"   Total Amount: {transport_amount:,.2f} {company_currency}")
-	frappe.logger().info(f"   Distribution: {lcv.distribute_charges_based_on}")
-	frappe.logger().info(f"=" * 80)
-	
+
+	frappe.logger().info(f"Transport LCV {lcv.name} created - Amount: {transport_amount:,.2f}")
+
 	return lcv
 
 
@@ -713,33 +554,14 @@ def create_price_variance_lcv_fixed(doc, variance_items):
 		lcv = frappe.new_doc("Landed Cost Voucher")
 		lcv.company = doc.company
 		lcv.posting_date = doc.posting_date or nowdate()
-		
-		frappe.logger().info(f"=" * 80)
-		frappe.logger().info(f"CREATING PRICE VARIANCE LCV FOR PI: {doc.name}")
-		frappe.logger().info(f"Company: {doc.company} | Currency: {company_currency}")
-		frappe.logger().info(f"=" * 80)
 
 		for pr_name in pr_names:
 			pr_doc = frappe.get_cached_doc("Purchase Receipt", pr_name)
-			
-			# ✅ UNIFIED CONVERSION: Use convert_to_company_currency helper
-			pr_grand_total_company = convert_to_company_currency(
-				amount=flt(pr_doc.grand_total),
-				from_currency=pr_doc.currency,
-				to_currency=company_currency,
-				exchange_rate=flt(pr_doc.conversion_rate)
-			)
-			
-			frappe.logger().info(f"PR: {pr_name}")
-			frappe.logger().info(f"  - Grand Total: {pr_doc.grand_total:,.2f} {pr_doc.currency}")
-			frappe.logger().info(f"  - Conversion Rate: {pr_doc.conversion_rate:,.4f}")
-			frappe.logger().info(f"  - Grand Total (Company): {pr_grand_total_company:,.2f} {company_currency}")
-			
 			lcv.append("purchase_receipts", {
 				"receipt_document_type": "Purchase Receipt",
 				"receipt_document": pr_name,
 				"supplier": pr_doc.supplier,
-				"grand_total": pr_grand_total_company  # ✅ Use converted value
+				"grand_total": pr_doc.grand_total
 			})
 
 		variance_account = get_purchase_price_variance_account(doc.company)
@@ -1132,136 +954,31 @@ def create_purchase_price_variance_account(company):
 
 def convert_to_company_currency(amount, from_currency, to_currency, exchange_rate):
 	"""
-	Valyuta konvertatsiyasi - SMART RATE LOGIC VERSION
+	Valyuta konvertatsiyasi - FIXED VERSION
 	
-	⚠️  CRITICAL: THIS IS THE ONLY FUNCTION THAT SHOULD PERFORM CURRENCY MATH!
-	   ALL other functions MUST call this helper instead of doing their own multiplication/division.
+	Frappe Logic:
+	- conversion_rate = 1 base unit of transaction currency = X units of company currency
+	- Agar PI currency = USD, company = UZS, rate = 12000
+	  → 1 USD = 12000 UZS
+	- Agar PI currency = UZS, company = USD, rate = 0.000083
+	  → 1 UZS = 0.000083 USD
 	
-	HANDLES TWO SCENARIOS:
-	
-	Scenario 1: Standard Frappe Rate (rate < 1.0)
-	  - Example: 1 UZS = 0.000083 USD
-	  - Formula: amount * rate
-	  - 10,000 UZS * 0.000083 = 0.83 USD ✅
-	
-	Scenario 2: Market Rate (rate > 1.0)
-	  - Example: 1 USD = 12,099 UZS (user inputs this manually)
-	  - But we need to convert FROM the smaller currency TO the larger
-	  - Formula: amount / rate
-	  - 10,000 UZS / 12,099 = 0.82 USD ✅
-	
-	THE LOGIC:
-	  - If rate < 1.0 → Use MULTIPLICATION (standard Frappe conversion)
-	  - If rate > 1.0 → Use DIVISION (market rate input)
-	  - If rate = 1.0 → Same currency or 1:1 exchange
-	
-	USED BY:
-	  - create_transport_lcv() - For PR grand_total conversion
-	  - create_price_variance_lcv_fixed() - For PR grand_total conversion
-	  - calculate_variance_smart() - For PR/PI rate conversion
-	  - Any future LCV-related currency conversion
-	
-	Args:
-		amount: Amount in source currency
-		from_currency: Source currency code
-		to_currency: Target (company) currency code
-		exchange_rate: Exchange rate value
-	
-	Returns:
-		float: Amount converted to company currency
+	Formula: amount_in_company_currency = amount * conversion_rate
 	"""
-	
-	# ==========================================
-	# STEP 1: STRICT VALIDATION
-	# ==========================================
-	
+
 	amount = flt(amount)
-	exchange_rate = flt(exchange_rate)
-	
-	# STRICT: Do NOT default to 1.0 if rate is 0
+	exchange_rate = flt(exchange_rate) or 1.0
+
 	if exchange_rate <= 0:
-		frappe.throw(
-			_(f"❌ CRITICAL ERROR: Exchange rate noto'g'ri!<br><br>"
-			  f"<b>From:</b> {from_currency}<br>"
-			  f"<b>To:</b> {to_currency}<br>"
-			  f"<b>Rate:</b> {exchange_rate}<br><br>"
-			  f"Exchange rate 0 yoki manfiy bo'lishi mumkin emas.")
-		)
-	
-	# ==========================================
-	# STEP 2: SAME CURRENCY CHECK
-	# ==========================================
-	
+		frappe.throw(_("Exchange rate 0 bo'lishi mumkin emas"))
+
+	# Agar bir xil valyuta bo'lsa
 	if from_currency == to_currency:
-		frappe.logger().info(
-			f"💱 CURRENCY CONVERSION: Same currency ({from_currency}), "
-			f"returning original amount: {amount:,.2f}"
-		)
 		return amount
-	
-	# ==========================================
-	# STEP 3: SMART RATE LOGIC
-	# ==========================================
-	
-	if exchange_rate == 1.0:
-		# Edge case: 1:1 exchange rate
-		result = amount
-		operation = "EQUAL (1:1)"
-		frappe.logger().info(
-			f"💱 CURRENCY CONVERSION: 1:1 rate detected\n"
-			f"   {amount:,.2f} {from_currency} = {result:,.2f} {to_currency}"
-		)
-	
-	elif exchange_rate < 1.0:
-		# STANDARD FRAPPE LOGIC: Small rate means multiply
-		# Example: 1 UZS = 0.000083 USD
-		# 10,000 UZS * 0.000083 = 0.83 USD
-		result = amount * exchange_rate
-		operation = "MULTIPLY"
-		
-		frappe.logger().info(
-			f"💱 CURRENCY CONVERSION: Standard Rate (< 1.0)\n"
-			f"   Operation: {operation}\n"
-			f"   Formula: {amount:,.2f} × {exchange_rate:,.6f}\n"
-			f"   Result: {amount:,.2f} {from_currency} = {result:,.2f} {to_currency}"
-		)
-	
-	else:  # exchange_rate > 1.0
-		# MARKET RATE LOGIC: Large rate means divide
-		# Example: User inputs "1 USD = 12,099 UZS"
-		# But we're converting FROM UZS TO USD
-		# So: 10,000 UZS / 12,099 = 0.82 USD
-		result = amount / exchange_rate
-		operation = "DIVIDE"
-		
-		frappe.logger().info(
-			f"💱 CURRENCY CONVERSION: Market Rate (> 1.0)\n"
-			f"   Operation: {operation}\n"
-			f"   Formula: {amount:,.2f} ÷ {exchange_rate:,.2f}\n"
-			f"   Result: {amount:,.2f} {from_currency} = {result:,.2f} {to_currency}\n"
-			f"   ⚠️  NOTE: Rate > 1.0 detected - using DIVISION to prevent astronomical values"
-		)
-	
-	# ==========================================
-	# STEP 4: SANITY CHECK
-	# ==========================================
-	
-	# Detect obviously wrong conversions (e.g., 10,000 UZS becoming 120 million USD)
-	if result > amount * 1000:
-		frappe.log_error(
-			message=(
-				f"⚠️  SUSPICIOUS CONVERSION DETECTED:\n"
-				f"Amount: {amount:,.2f} {from_currency}\n"
-				f"Rate: {exchange_rate:,.6f}\n"
-				f"Result: {result:,.2f} {to_currency}\n"
-				f"Operation: {operation}\n\n"
-				f"This conversion resulted in a value 1000x larger than input. "
-				f"Please verify the exchange rate is correct."
-			),
-			title=f"Suspicious Currency Conversion: {from_currency} → {to_currency}"
-		)
-	
-	return flt(result)
+
+	# ✅ UNIVERSAL FORMULA: amount * conversion_rate
+	# Frappe'da conversion_rate allaqachon to'g'ri yo'nalishda
+	return amount * exchange_rate
 
 
 # ============================================================
