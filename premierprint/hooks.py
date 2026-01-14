@@ -39,7 +39,7 @@ fixtures = [
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/premierprint/css/premierprint.css"
-# app_include_js = "/assets/premierprint/js/premierprint.js"
+app_include_js = "/assets/premierprint/js/stock_entry_custom.js"
 
 # include js, css files in header of web template
 # web_include_css = "/assets/premierprint/css/premierprint.css"
@@ -186,6 +186,7 @@ doc_events = {
 
 # Scheduled Tasks
 # ---------------
+# Temporarily disabled - utils.py was removed
 # scheduler_events = {
 #     "hourly": [
 #         "premierprint.utils.utils.update_cbu_exchange_rate"
@@ -204,6 +205,7 @@ app_include_js = [
 
 # DocType-specific Client Scripts
 doctype_js = {
+	"Stock Entry": "stock_entry.js",
 	"Purchase Order": "public/js/purchase_order.js",
 	"Purchase Invoice": "public/js/purchase_invoice.js",
 	"Item": "public/js/item.js",
