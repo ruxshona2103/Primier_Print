@@ -77,7 +77,7 @@
   "property": "hidden",
   "property_type": "Check",
   "row_name": null,
-  "value": "1"
+  "value": "0"
  },
  {
   "default_value": null,
@@ -93,7 +93,7 @@
   "property": "hidden",
   "property_type": "Check",
   "row_name": null,
-  "value": "1"
+  "value": "0"
  },
  {
   "default_value": null,
@@ -109,7 +109,7 @@
   "property": "hidden",
   "property_type": "Check",
   "row_name": null,
-  "value": "1"
+  "value": "0"
  },
  {
   "default_value": null,
@@ -125,7 +125,7 @@
   "property": "hidden",
   "property_type": "Check",
   "row_name": null,
-  "value": "1"
+  "value": "0"
  },
  {
   "default_value": null,
@@ -141,7 +141,7 @@
   "property": "hidden",
   "property_type": "Check",
   "row_name": null,
-  "value": "1"
+  "value": "0"
  },
  {
   "default_value": null,
@@ -157,7 +157,7 @@
   "property": "hidden",
   "property_type": "Check",
   "row_name": null,
-  "value": "1"
+  "value": "0"
  },
  {
   "default_value": null,
@@ -173,7 +173,7 @@
   "property": "hidden",
   "property_type": "Check",
   "row_name": null,
-  "value": "1"
+  "value": "0"
  },
  {
   "default_value": null,
@@ -189,7 +189,7 @@
   "property": "hidden",
   "property_type": "Check",
   "row_name": null,
-  "value": "1"
+  "value": "0"
  },
  {
   "default_value": null,
@@ -205,7 +205,7 @@
   "property": "hidden",
   "property_type": "Check",
   "row_name": null,
-  "value": "1"
+  "value": "0"
  },
  {
   "default_value": null,
@@ -221,7 +221,7 @@
   "property": "hidden",
   "property_type": "Check",
   "row_name": null,
-  "value": "1"
+  "value": "0"
  },
  {
   "default_value": null,
@@ -237,7 +237,7 @@
   "property": "hidden",
   "property_type": "Check",
   "row_name": null,
-  "value": "1"
+  "value": "0"
  },
  {
   "default_value": null,
@@ -253,7 +253,7 @@
   "property": "hidden",
   "property_type": "Check",
   "row_name": null,
-  "value": "1"
+  "value": "0"
  },
  {
   "default_value": null,
@@ -269,7 +269,7 @@
   "property": "hidden",
   "property_type": "Check",
   "row_name": null,
-  "value": "1"
+  "value": "0"
  },
  {
   "default_value": null,
@@ -285,7 +285,7 @@
   "property": "hidden",
   "property_type": "Check",
   "row_name": null,
-  "value": "1"
+  "value": "0"
  },
  {
   "default_value": null,
@@ -301,7 +301,7 @@
   "property": "hidden",
   "property_type": "Check",
   "row_name": null,
-  "value": "1"
+  "value": "0"
  },
  {
   "default_value": null,
@@ -317,7 +317,7 @@
   "property": "hidden",
   "property_type": "Check",
   "row_name": null,
-  "value": "1"
+  "value": "0"
  },
  {
   "default_value": null,
@@ -333,7 +333,7 @@
   "property": "hidden",
   "property_type": "Check",
   "row_name": null,
-  "value": "1"
+  "value": "0"
  },
  {
   "default_value": null,
@@ -349,7 +349,7 @@
   "property": "hidden",
   "property_type": "Check",
   "row_name": null,
-  "value": "1"
+  "value": "0"
  },
  {
   "default_value": null,
@@ -365,7 +365,7 @@
   "property": "hidden",
   "property_type": "Check",
   "row_name": null,
-  "value": "1"
+  "value": "0"
  },
  {
   "default_value": null,
@@ -381,7 +381,7 @@
   "property": "hidden",
   "property_type": "Check",
   "row_name": null,
-  "value": "1"
+  "value": "0"
  },
  {
   "default_value": null,
@@ -397,7 +397,7 @@
   "property": "hidden",
   "property_type": "Check",
   "row_name": null,
-  "value": "1"
+  "value": "0"
  },
  {
   "default_value": null,
@@ -413,7 +413,7 @@
   "property": "hidden",
   "property_type": "Check",
   "row_name": null,
-  "value": "1"
+  "value": "0"
  },
  {
   "default_value": null,
@@ -749,7 +749,7 @@
   "property": "hidden",
   "property_type": "Check",
   "row_name": null,
-  "value": "1"
+  "value": "0"
  },
  {
   "default_value": null,
@@ -765,7 +765,7 @@
   "property": "hidden",
   "property_type": "Check",
   "row_name": null,
-  "value": "1"
+  "value": "0"
  },
  {
   "default_value": null,
@@ -7028,22 +7028,6 @@
   "doc_type": "Item",
   "docstatus": 0,
   "doctype": "Property Setter",
-  "doctype_or_field": "DocType",
-  "field_name": null,
-  "is_system_generated": 0,
-  "modified": "2025-12-25 22:02:37.049779",
-  "module": null,
-  "name": "Item-main-field_order",
-  "property": "field_order",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "[\"details\", \"naming_series\", \"item_code\", \"item_name\", \"item_group\", \"stock_uom\", \"custom_custom_id\", \"custom_sub_company\", \"column_break0\", \"disabled\", \"allow_alternative_item\", \"is_stock_item\", \"has_variants\", \"opening_stock\", \"valuation_rate\", \"standard_rate\", \"is_fixed_asset\", \"auto_create_assets\", \"is_grouped_asset\", \"asset_category\", \"asset_naming_series\", \"over_delivery_receipt_allowance\", \"over_billing_allowance\", \"image\", \"section_break_11\", \"description\", \"brand\", \"unit_of_measure_conversion\", \"uoms\", \"dashboard_tab\", \"inventory_section\", \"inventory_settings_section\", \"shelf_life_in_days\", \"end_of_life\", \"default_material_request_type\", \"valuation_method\", \"column_break1\", \"warranty_period\", \"weight_per_unit\", \"weight_uom\", \"allow_negative_stock\", \"sb_barcodes\", \"barcodes\", \"reorder_section\", \"reorder_levels\", \"serial_nos_and_batches\", \"has_batch_no\", \"create_new_batch\", \"batch_number_series\", \"has_expiry_date\", \"retain_sample\", \"sample_quantity\", \"column_break_37\", \"has_serial_no\", \"serial_no_series\", \"variants_section\", \"variant_of\", \"variant_based_on\", \"attributes\", \"accounting\", \"deferred_accounting_section\", \"enable_deferred_expense\", \"no_of_months_exp\", \"column_break_9s9o\", \"enable_deferred_revenue\", \"no_of_months\", \"section_break_avcp\", \"item_defaults\", \"purchasing_tab\", \"purchase_uom\", \"min_order_qty\", \"safety_stock\", \"is_purchase_item\", \"purchase_details_cb\", \"lead_time_days\", \"last_purchase_rate\", \"is_customer_provided_item\", \"customer\", \"supplier_details\", \"delivered_by_supplier\", \"column_break2\", \"supplier_items\", \"foreign_trade_details\", \"country_of_origin\", \"column_break_59\", \"customs_tariff_number\", \"sales_details\", \"sales_uom\", \"grant_commission\", \"is_sales_item\", \"column_break3\", \"max_discount\", \"customer_details\", \"customer_items\", \"item_tax_section_break\", \"taxes\", \"quality_tab\", \"inspection_required_before_purchase\", \"quality_inspection_template\", \"inspection_required_before_delivery\", \"manufacturing\", \"include_item_in_manufacturing\", \"is_sub_contracted_item\", \"default_bom\", \"column_break_74\", \"customer_code\", \"default_item_manufacturer\", \"default_manufacturer_part_no\", \"total_projected_qty\"]"
- },
- {
-  "default_value": null,
-  "doc_type": "Item",
-  "docstatus": 0,
-  "doctype": "Property Setter",
   "doctype_or_field": "DocField",
   "field_name": "naming_series",
   "is_system_generated": 1,
@@ -7069,7 +7053,7 @@
   "property": "hidden",
   "property_type": "Check",
   "row_name": null,
-  "value": "1"
+  "value": "0"
  },
  {
   "default_value": null,
@@ -7085,7 +7069,7 @@
   "property": "hidden",
   "property_type": "Check",
   "row_name": null,
-  "value": "1"
+  "value": "0"
  },
  {
   "default_value": null,
@@ -7101,7 +7085,7 @@
   "property": "hidden",
   "property_type": "Check",
   "row_name": null,
-  "value": "1"
+  "value": "0"
  },
  {
   "default_value": null,
@@ -7117,7 +7101,7 @@
   "property": "hidden",
   "property_type": "Check",
   "row_name": null,
-  "value": "1"
+  "value": "0"
  },
  {
   "default_value": null,
@@ -7133,7 +7117,7 @@
   "property": "hidden",
   "property_type": "Check",
   "row_name": null,
-  "value": "1"
+  "value": "0"
  },
  {
   "default_value": null,
@@ -7149,7 +7133,7 @@
   "property": "hidden",
   "property_type": "Check",
   "row_name": null,
-  "value": "1"
+  "value": "0"
  },
  {
   "default_value": null,
@@ -7165,7 +7149,7 @@
   "property": "hidden",
   "property_type": "Check",
   "row_name": null,
-  "value": "1"
+  "value": "0"
  },
  {
   "default_value": null,
@@ -7454,5 +7438,21 @@
   "property_type": "Text",
   "row_name": null,
   "value": "ACC-SINV-.#######"
+ },
+ {
+  "default_value": null,
+  "doc_type": "Item",
+  "docstatus": 0,
+  "doctype": "Property Setter",
+  "doctype_or_field": "DocType",
+  "field_name": null,
+  "is_system_generated": 0,
+  "modified": "2026-01-14 14:35:07.429493",
+  "module": null,
+  "name": "Item-main-field_order",
+  "property": "field_order",
+  "property_type": "Data",
+  "row_name": null,
+  "value": "[\"details\", \"naming_series\", \"item_code\", \"item_name\", \"item_group\", \"stock_uom\", \"custom_company_name\", \"custom_custom_id\", \"column_break0\", \"disabled\", \"allow_alternative_item\", \"is_stock_item\", \"has_variants\", \"opening_stock\", \"valuation_rate\", \"standard_rate\", \"is_fixed_asset\", \"auto_create_assets\", \"is_grouped_asset\", \"asset_category\", \"asset_naming_series\", \"over_delivery_receipt_allowance\", \"over_billing_allowance\", \"image\", \"section_break_11\", \"description\", \"brand\", \"unit_of_measure_conversion\", \"uoms\", \"dashboard_tab\", \"inventory_section\", \"inventory_settings_section\", \"shelf_life_in_days\", \"end_of_life\", \"default_material_request_type\", \"valuation_method\", \"column_break1\", \"warranty_period\", \"weight_per_unit\", \"weight_uom\", \"allow_negative_stock\", \"sb_barcodes\", \"barcodes\", \"reorder_section\", \"reorder_levels\", \"serial_nos_and_batches\", \"has_batch_no\", \"create_new_batch\", \"batch_number_series\", \"has_expiry_date\", \"retain_sample\", \"sample_quantity\", \"column_break_37\", \"has_serial_no\", \"serial_no_series\", \"variants_section\", \"variant_of\", \"variant_based_on\", \"attributes\", \"accounting\", \"deferred_accounting_section\", \"enable_deferred_expense\", \"no_of_months_exp\", \"column_break_9s9o\", \"enable_deferred_revenue\", \"no_of_months\", \"section_break_avcp\", \"item_defaults\", \"purchasing_tab\", \"purchase_uom\", \"min_order_qty\", \"safety_stock\", \"is_purchase_item\", \"purchase_details_cb\", \"lead_time_days\", \"last_purchase_rate\", \"is_customer_provided_item\", \"customer\", \"supplier_details\", \"delivered_by_supplier\", \"column_break2\", \"supplier_items\", \"foreign_trade_details\", \"country_of_origin\", \"column_break_59\", \"customs_tariff_number\", \"sales_details\", \"sales_uom\", \"grant_commission\", \"is_sales_item\", \"column_break3\", \"max_discount\", \"customer_details\", \"customer_items\", \"item_tax_section_break\", \"taxes\", \"quality_tab\", \"inspection_required_before_purchase\", \"quality_inspection_template\", \"inspection_required_before_delivery\", \"manufacturing\", \"include_item_in_manufacturing\", \"is_sub_contracted_item\", \"default_bom\", \"column_break_74\", \"customer_code\", \"default_item_manufacturer\", \"default_manufacturer_part_no\", \"total_projected_qty\"]"
  }
 ]

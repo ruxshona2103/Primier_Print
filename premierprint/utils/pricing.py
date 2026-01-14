@@ -23,15 +23,19 @@ def get_last_sales_price(item_code, customer=None):
 
 	# Agar customer berilgan bo'lsa, faqat shu mijoz uchun
 	if customer:
-		filters["parent"] = frappe.db.sql("""
-										  SELECT name
-										  FROM `tabSales Invoice`
-										  WHERE customer = %s
-											AND docstatus = 1
-										  """, customer, as_list=True)
+		# Faqat mijozga tegishli invoice nomlarini oddiy ro'yxat (list) qilib olamiz
+		invoice_names = frappe.get_all(
+			"Sales Invoice",
+			filters={"customer": customer, "docstatus": 1},
+			pluck="name"
+		)
 
-		if not filters["parent"]:
+		if not invoice_names:
 			return get_last_sales_price_any_customer(item_code)
+		
+		# Endi filtrga to'g'ri formatda (operator bilan) uzatamiz
+		filters["parent"] = ["in", invoice_names]
+
 
 	# Eng oxirgi Sales Invoice Item-ni topish
 	last_item = frappe.db.get_all(
