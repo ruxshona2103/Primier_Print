@@ -15,7 +15,7 @@ from frappe.utils import flt, nowdate
 import json
 
 # Import shared utility functions
-from premierprint.api.lcv_utils import convert_to_company_currency, get_stock_received_but_not_billed_account
+from premierprint.services.lcv_utils import convert_to_company_currency, get_stock_received_but_not_billed_account
 
 
 def create_price_variance_lcv(doc, variance_items):

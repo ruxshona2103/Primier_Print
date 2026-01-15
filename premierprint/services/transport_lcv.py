@@ -14,7 +14,7 @@ from frappe import _
 from frappe.utils import flt
 
 # Import shared utility functions
-from premierprint.api.lcv_utils import convert_to_company_currency, get_transport_expense_account
+from premierprint.services.lcv_utils import convert_to_company_currency, get_transport_expense_account
 
 
 def create_transport_lcv(doc, pr_list, transport_amount, original_amount, original_currency, exchange_rate):

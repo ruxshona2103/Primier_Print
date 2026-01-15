@@ -25,7 +25,7 @@ from frappe import _
 from frappe.utils import flt
 
 # Import utility functions (The Brain)
-from premierprint.api.lcv_utils import convert_to_company_currency
+from premierprint.services.lcv_utils import convert_to_company_currency
 
 # Import specialized service modules
 from premierprint.services.transport_lcv import (

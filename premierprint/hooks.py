@@ -152,28 +152,11 @@ override_doctype_class = {
 # ---------------
 # Hook on document methods and events
 # hooks.py
-
 doc_events = {
 	"Purchase Invoice": {
-		"before_insert": [
-			# Auto-fill transport cost from Purchase Order
-			"premierprint.services.lcv_service.auto_fill_transport_from_po"
-		],
-		"validate": [
-			# Validate transport data
-			"premierprint.services.lcv_service.validate_transport_data"
-		],
-		"on_submit": [
-			# 1. Transport Cost LCV
-			"premierprint.services.lcv_service.create_lcv_from_pi",
-
-			# 2. Price Variance LCV
-			"premierprint.services.lcv_service.auto_create_lcv_for_price_variance"
-		],
-		"on_cancel": [
-			# Cancel linked Price Variance LCVs
-			"premierprint.services.lcv_service.cancel_linked_lcvs"
-		]
+		"validate": "premierprint.services.lcv_trigger.validate",
+		"on_submit": "premierprint.services.lcv_trigger.on_submit",
+		"on_cancel": "premierprint.services.lcv_trigger.on_cancel"
 	}
 }
 # doc_events = {
