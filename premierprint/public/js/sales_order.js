@@ -19,6 +19,8 @@ function apply_naming_series(frm) {
     };
 
     if (frm.doc.company && mapping[frm.doc.company]) {
+        console.log("Applying Naming Series for:", frm.doc.company, "->", mapping[frm.doc.company]);
         frm.set_value('naming_series', mapping[frm.doc.company]);
+        // frappe.msgprint msg removed as per user request to avoid distraction
     }
 }

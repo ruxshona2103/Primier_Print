@@ -19,17 +19,13 @@ fixtures = [
     "Currency Exchange",
 ]
 
-# JS ulanishi
-doctype_js = {
-    "Sales Order": "public/js/sales_order.js"
-}
+
 
 # Python eventlar
 # Python eventlar
 doc_events = {
     "Sales Order": {
-        "before_insert": "premierprint.utils.sales_order.set_naming_series",
-        "before_save": "premierprint.utils.sales_order.set_naming_series"
+        "validate": "premierprint.utils.sales_order.set_naming_series"
     },
     "Purchase Invoice": {
 		"validate": "premierprint.services.lcv_trigger.validate",
@@ -200,18 +196,9 @@ override_doctype_class = {
 # }
 
 
-# Client Scripts
-# IZOH: Fayllar yuklash tartibi muhim! Global fayllar birinchi yuklanadi,
-# keyin DocType-specific fayllar yuklanadi.
-app_include_js = [
-    "/assets/premierprint/js/sales_order.js",
-	"/assets/premierprint/js/global_modal_fix.js",
-	"/assets/premierprint/js/auto_fetch_account.js",
-]
-
 # DocType-specific Client Scripts
 doctype_js = {
-	"Stock Entry": "stock_entry.js",
+	"Sales Order": "public/js/sales_order.js",
 	"Purchase Order": "public/js/purchase_order.js",
 	"Purchase Invoice": "public/js/purchase_invoice.js",
 	"Item": "public/js/item.js",

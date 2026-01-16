@@ -7367,13 +7367,13 @@
   "doctype_or_field": "DocField",
   "field_name": "naming_series",
   "is_system_generated": 1,
-  "modified": "2026-01-14 15:56:46.221192",
+  "modified": "2026-01-16 15:50:01.689611",
   "module": null,
   "name": "Sales Order-naming_series-default",
   "property": "default",
   "property_type": "Text",
   "row_name": null,
-  "value": "SAL-ORD-"
+  "value": ""
  },
  {
   "default_value": null,
@@ -7415,12 +7415,12 @@
   "doctype_or_field": "DocField",
   "field_name": "naming_series",
   "is_system_generated": 1,
-  "modified": "2026-01-16 15:02:57.100834",
+  "modified": "2026-01-16 15:50:01.473725",
   "module": null,
   "name": "Sales Order-naming_series-options",
   "property": "options",
   "property_type": "Text",
   "row_name": null,
-  "value": "SAL-ORD-\nПП-.#######\nП-.########\nР-.#######\nС-.#######"
+  "value": "ПП-.#######\nП-.########\nР-.#######\nС-.#######"
  }
 ]
