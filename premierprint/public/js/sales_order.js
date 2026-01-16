@@ -1,30 +1,24 @@
-frappe.ui.form.on('Sales Order Item', {
-    item_code: function(frm, cdt, cdn) {
-        let row = locals[cdt][cdn];
-
-        if (!row.item_code) return;
-
-        // Eng oxirgi Sales Invoice-dan narx olish
-        frappe.call({
-            method: 'premierprint.utils.pricing.get_last_sales_price',
-            args: {
-                item_code: row.item_code,
-                customer: frm.doc.customer
-            },
-            callback: function(r) {
-                if (r.message && r.message.rate) {
-                    frappe.model.set_value(cdt, cdn, 'rate', r.message.rate);
-
-                    // Ma'lumot ko'rsatish
-                    frappe.show_alert({
-                        message: __('Eng oxirgi narx ({0}): {1}', [
-                            r.message.date || 'Noma\'lum sana',
-                            format_currency(r.message.rate, frm.doc.currency)
-                        ]),
-                        indicator: 'blue'
-                    }, 3);
-                }
-            }
-        });
+frappe.ui.form.on('Sales Order', {
+    onload: function (frm) {
+        // Yangi hujjat ochilganda standart seriyani bo'shatib turish yoki kompaniyaga qarab o'rnatish
+        if (frm.is_new() && frm.doc.company) {
+            apply_naming_series(frm);
+        }
+    },
+    company: function (frm) {
+        apply_naming_series(frm);
     }
 });
+
+function apply_naming_series(frm) {
+    const mapping = {
+        "Premier Print": "ПП-.#######",
+        "Полиграфия": "П-.########",
+        "Реклама": "Р-.#######",
+        "Сувенир": "С-.#######"
+    };
+
+    if (frm.doc.company && mapping[frm.doc.company]) {
+        frm.set_value('naming_series', mapping[frm.doc.company]);
+    }
+}

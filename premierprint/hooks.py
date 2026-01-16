@@ -18,6 +18,35 @@ fixtures = [
     "Custom DocPerm",
     "Currency Exchange",
 ]
+
+# JS ulanishi
+doctype_js = {
+    "Sales Order": "public/js/sales_order.js"
+}
+
+# Python eventlar
+# Python eventlar
+doc_events = {
+    "Sales Order": {
+        "before_insert": "premierprint.utils.sales_order.set_naming_series",
+        "before_save": "premierprint.utils.sales_order.set_naming_series"
+    },
+    "Purchase Invoice": {
+		"validate": "premierprint.services.lcv_trigger.validate",
+		"on_submit": "premierprint.services.lcv_trigger.on_submit",
+		"on_cancel": "premierprint.services.lcv_trigger.on_cancel"
+	}
+}
+
+# Defaultni o'chirish (Restartdan keyin SAL-ORD qaytib kelmasligi uchun)
+property_setters = [
+    {
+        "doctype": "Sales Order",
+        "field_name": "naming_series",
+        "property": "default",
+        "value": ""
+    }
+]
 # Apps
 # ------------------
 
@@ -152,13 +181,7 @@ override_doctype_class = {
 # ---------------
 # Hook on document methods and events
 # hooks.py
-doc_events = {
-	"Purchase Invoice": {
-		"validate": "premierprint.services.lcv_trigger.validate",
-		"on_submit": "premierprint.services.lcv_trigger.on_submit",
-		"on_cancel": "premierprint.services.lcv_trigger.on_cancel"
-	}
-}
+
 # doc_events = {
 # 	"*": {
 # 		"on_update": "method",
