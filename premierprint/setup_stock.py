@@ -43,37 +43,13 @@ def create_custom_fields_for_stock_entry():
 				"read_only": 0,
 				"description": "Услуги по заказу uchun taminotchi"
 			},
-			# 2. From Sub Company - Ko'chirish uchun
-			{
-				"fieldname": "custom_from_sub_company",
-				"label": "From Sub Company",
-				"fieldtype": "Select",
-				"options": "\nПолиграфия\nРеклама\nСувенир",
-				"insert_after": "custom_supplier",
-				"reqd": 0,
-				"hidden": 0,
-				"read_only": 0,
-				"description": "Qaysi tashkilotdan ko'chiriladi"
-			},
-			# 3. To Sub Company - Ko'chirish uchun
-			{
-				"fieldname": "custom_to_sub_company",
-				"label": "To Sub Company",
-				"fieldtype": "Select",
-				"options": "\nПолиграфия\nРеклама\nСувенир",
-				"insert_after": "custom_from_sub_company",
-				"reqd": 0,
-				"hidden": 0,
-				"read_only": 0,
-				"description": "Qaysi tashkilotga ko'chiriladi"
-			},
-			# 4. Sales Order - Buyurtma
+			# 2. Sales Order - Buyurtma
 			{
 				"fieldname": "custom_sales_order",
 				"label": "Sales Order",
 				"fieldtype": "Link",
 				"options": "Sales Order",
-				"insert_after": "custom_to_sub_company",
+				"insert_after": "custom_supplier",
 				"reqd": 0,
 				"hidden": 0,
 				"read_only": 0,
@@ -115,11 +91,6 @@ def create_stock_entry_types():
 			"purpose": "Material Issue",
 			"description": "Buyurtma bo'yicha chiqim (Narx yashiriladi)"
 		},
-		{
-			"name": "Перемещение",
-			"purpose": "Material Transfer",
-			"description": "Tashkilotlar o'rtasida ko'chirish"
-		}
 	]
 
 	created_count = 0
@@ -152,11 +123,11 @@ def create_client_script():
 	script_code = """
 frappe.ui.form.on('Stock Entry', {
 	onload: function(frm) {
-		// Stock Entry Type ni filtrlash (Faqat kerakli 3 ta)
+		// Stock Entry Type ni filtrlash (Faqat kerakli 2 ta)
 		frm.set_query('stock_entry_type', function() {
 			return {
 				filters: {
-					'name': ['in', ['Услуги по заказу', 'Расход по заказу', 'Перемещение']]
+					'name': ['in', ['Услуги по заказу', 'Расход по заказу']]
 				}
 			};
 		});
@@ -290,39 +261,10 @@ function apply_ui_rules(frm) {
 		frm.set_df_property('total_amount', 'hidden', 1);
 		frm.set_df_property('value_difference', 'hidden', 1);
 
-	} else if (entry_type === 'Перемещение') {
-		// C) Перемещение - Narx ko'rinadi lekin o'zgartirib bo'lmaydi
-
-		// Supplier - Yashirilsin
-		frm.set_df_property('custom_supplier', 'hidden', 1);
-		frm.set_df_property('custom_supplier', 'reqd', 0);
-
-		// From/To Sub Company - Ko'rinsin va majburiy
-		frm.set_df_property('custom_from_sub_company', 'hidden', 0);
-		frm.set_df_property('custom_to_sub_company', 'hidden', 0);
-		frm.set_df_property('custom_from_sub_company', 'reqd', 1);
-		frm.set_df_property('custom_to_sub_company', 'reqd', 1);
-
-		// Items jadvalida narx (basic_rate) - Ko'rinsin lekin o'zgarmasin (READ ONLY)
-		frm.fields_dict.items.grid.update_docfield_property('basic_rate', 'hidden', 0);
-		frm.fields_dict.items.grid.update_docfield_property('basic_rate', 'read_only', 1);
-		frm.fields_dict.items.grid.update_docfield_property('amount', 'hidden', 0);
-		frm.fields_dict.items.grid.update_docfield_property('valuation_rate', 'hidden', 0);
-
-		// Asosiy formdagi summa maydonlari - Ko'rinsin lekin o'zgarmasin
-		frm.set_df_property('total_outgoing_value', 'hidden', 0);
-		frm.set_df_property('total_incoming_value', 'hidden', 0);
-		frm.set_df_property('total_amount', 'hidden', 0);
-		frm.set_df_property('value_difference', 'hidden', 0);
-
 	} else {
-		// D) Boshqa turlar uchun - Default holatga qaytarish
+		// C) Boshqa turlar uchun - Default holatga qaytarish
 		frm.set_df_property('custom_supplier', 'hidden', 1);
 		frm.set_df_property('custom_supplier', 'reqd', 0);
-		frm.set_df_property('custom_from_sub_company', 'hidden', 1);
-		frm.set_df_property('custom_to_sub_company', 'hidden', 1);
-		frm.set_df_property('custom_from_sub_company', 'reqd', 0);
-		frm.set_df_property('custom_to_sub_company', 'reqd', 0);
 
 		frm.fields_dict.items.grid.update_docfield_property('basic_rate', 'hidden', 0);
 		frm.fields_dict.items.grid.update_docfield_property('basic_rate', 'read_only', 0);
