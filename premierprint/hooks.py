@@ -6,17 +6,60 @@ app_email = "munisabax2002@gmail.com"
 app_license = "mit"
 
 fixtures = [
-    "Custom Field",
-    "Property Setter",
-    "Client Script",
-    "Server Script",
-    "Print Format",
-    "Workflow",
-    "Workflow State",
-    "Workflow Action Master",
-    "Role Permission for Page and Report",
-    "Custom DocPerm",
-    "Currency Exchange",
+	# 1. UI va Formalar Dizayni (Eng asosiysi)
+	{
+		"dt": "Property Setter",
+		"filters": [
+			["module", "=", "PremierPrint"]
+		]
+	},
+	{
+		"dt": "Custom Field",
+		"filters": [
+			["module", "=", "PremierPrint"]
+		]
+	},
+	# 2. Skriptlar va Logika
+	# {
+	# 	"dt": "Client Script",
+	# 	"filters": [
+	# 		["module", "=", "PremierPrint"]
+	# 	]
+	# },
+	# 3. Ruxsatlar (Permissions)
+	{
+		"dt": "Custom DocPerm"
+		# Filterni butunlay olib tashlaymiz, chunki 'module' ustuni yo'q.
+		# Bu barcha Custom DocPerm larni export qiladi.
+	},
+	{
+		"dt": "Role Permission for Page and Report",
+		"filters": [["module", "=", "PremierPrint"]
+		]
+	},
+
+	# 4. Workflow (Jarayonlar)
+	# DIQQAT: Workflow to'liq ishlashi uchun State va Actionlar ham kerak
+	{
+		"dt": "Workflow",
+	},
+
+	# 2. Workflow State (Statuslar) - Bunga FILTR KERAK!
+	{
+		"dt": "Workflow State",
+	},
+
+	# 3. Workflow Action (Tugmalar) - Bunga filtr QO'YMANG! (Chunki module ustuni yo'q)
+	{
+		"dt": "Workflow Action Master"
+	},
+	# 5. Print Format (Agar sizda maxsus chek dizaynlari bo'lsa)
+	{
+		"dt": "Print Format",
+		"filters": [["module", "=", "PremierPrint"],
+			["standard", "=", "No"]  # Faqat standart bo'lmaganlarini oladi
+		]
+	}
 ]
 
 
