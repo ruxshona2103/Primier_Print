@@ -205,7 +205,10 @@ doctype_js = {
 	"Payment Entry": "public/js/payment_entry.js",
 	"Stock Entry": "public/js/stock_entry.js"
 }
-
+patches = [
+    # ... eski patchlar
+    "premierprint.patches.clean_property_setters.execute"
+]
 # scheduler_events = {
 # 	"all": [
 # 		"premierprint.tasks.all"
