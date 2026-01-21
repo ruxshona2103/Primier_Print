@@ -2,11 +2,13 @@
  * Stock Entry - Premier Print Custom Logic
  * 
  * Bu fayl quyidagi mantiqlarni o'z ichiga oladi:
- * 1. Sales Order - custom query showing customer_name
- * 2. Sales Order Item - filtered by Sales Order
- * 3. BOM Explosion - Sales Order Item tanlanganda materiallarni yuklash
+ * 1. Naming Series - companyga qarab avtomatik series
+ * 2. Sales Order - custom query showing customer_name
+ * 3. Sales Order Item - filtered by Sales Order
+ * 4. BOM Explosion - Sales Order Item tanlanganda materiallarni yuklash
+ * 5. Supplier Field - "Услуги по заказу" uchun ko'rsatish
  * 
- * Faqat "Услуга по заказу" va "Расход по заказу" turlari uchun
+ * Faqat "Услуги по заказу" va "Расход по заказу" turlari uchun
  * 
  * @module premierprint/public/js/stock_entry.js
  * @author Premier Print Team
@@ -51,9 +53,24 @@ frappe.ui.form.on('Stock Entry', {
         });
     },
 
-    refresh: function (frm) {
-        // Show/hide Sales Order fields based on stock entry type
+    onload: function (frm) {
+        // Set naming series on load
+        if (frm.is_new()) {
+            set_stock_naming_series(frm);
+        }
         toggle_sales_order_fields(frm);
+        toggle_supplier_field(frm);
+    },
+
+    refresh: function (frm) {
+        // Set naming series on refresh (new docs)
+        if (frm.is_new()) {
+            set_stock_naming_series(frm);
+        }
+
+        // Show/hide fields based on stock entry type
+        toggle_sales_order_fields(frm);
+        toggle_supplier_field(frm);
 
         // DISABLE link navigation for Sales Order Item (it's a Child Table)
         disable_link_navigation(frm, 'custom_sales_order_item');
@@ -64,6 +81,16 @@ frappe.ui.form.on('Stock Entry', {
                 load_bom_materials(frm);
             }, __('Actions'));
         }
+    },
+
+    company: function (frm) {
+        // Update naming series when company changes
+        set_stock_naming_series(frm);
+    },
+
+    stock_entry_type: function (frm) {
+        toggle_sales_order_fields(frm);
+        toggle_supplier_field(frm);
     },
 
     custom_sales_order: function (frm) {
@@ -91,16 +118,41 @@ frappe.ui.form.on('Stock Entry', {
                 }
             );
         }
-    },
-
-    stock_entry_type: function (frm) {
-        toggle_sales_order_fields(frm);
-    },
-
-    onload: function (frm) {
-        toggle_sales_order_fields(frm);
     }
 });
+
+// ==================== NAMING SERIES ====================
+
+/**
+ * Company ga qarab naming series o'rnatish
+ */
+function set_stock_naming_series(frm) {
+    if (!frm.doc.company) return;
+
+    const series_map = {
+        "Premier Print": "ПП-#######",
+        "Полиграфия": "П-#######",
+        "Сувенир": "С-#######",
+        "Реклама": "Р-#######"
+    };
+
+    let target_series = series_map[frm.doc.company] || "";
+    if (target_series && frm.doc.naming_series !== target_series) {
+        frm.set_value("naming_series", target_series);
+    }
+}
+
+// ==================== SUPPLIER FIELD ====================
+
+/**
+ * Supplier maydonini ko'rsatish/yashirish
+ * Faqat "Услуги по заказу" uchun Supplier ko'rsatiladi
+ */
+function toggle_supplier_field(frm) {
+    let show_supplier = frm.doc.stock_entry_type === 'Услуги по заказу';
+    frm.toggle_display('supplier', show_supplier);
+    frm.toggle_reqd('supplier', show_supplier);
+}
 
 // ==================== BOM YUKLASH ====================
 
@@ -187,10 +239,10 @@ function add_bom_items_to_table(frm, materials) {
 
 /**
  * Sales Order maydonlarini faqat tegishli turlarda ko'rsatish
- * Faqat "Услуга по заказу" va "Расход по заказу" uchun
+ * "Услуги по заказу" va "Расход по заказу" uchun
  */
 function toggle_sales_order_fields(frm) {
-    let show_so_fields = ['Услуга по заказу', 'Расход по заказу'].includes(frm.doc.stock_entry_type);
+    let show_so_fields = ['Услуги по заказу', 'Расход по заказу'].includes(frm.doc.stock_entry_type);
 
     frm.toggle_display('custom_sales_order', show_so_fields);
     frm.toggle_display('custom_sales_order_item', show_so_fields);
