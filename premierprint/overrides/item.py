@@ -22,10 +22,9 @@ class CustomItem(Item):
         """
         Override ERPNext's autoname to use simple numeric IDs: 1, 2, 3, 4...
         """
-        if not self.item_code:
-            # Get next ID from our custom function
-            from premierprint.utils.naming import get_next_item_id
-            next_id = get_next_item_id()
-            self.item_code = next_id
+        if not self.item_code or self.item_code.startswith("STO-ITEM"):
+            # Use centralized logic
+            from premierprint.utils.naming import autoname_item
+            autoname_item(self, None)
 
         self.name = self.item_code
