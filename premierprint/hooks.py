@@ -70,11 +70,14 @@ doc_events = {
     "Sales Order": {
         "validate": "premierprint.utils.sales_order.set_naming_series"
     },
+    "Sales Invoice": {
+        "on_submit": "premierprint.api.sales_invoice.create_inter_company_purchase_invoice"
+    },
     "Purchase Invoice": {
-		"validate": "premierprint.services.lcv_trigger.validate",
-		"on_submit": "premierprint.services.lcv_trigger.on_submit",
-		"on_cancel": "premierprint.services.lcv_trigger.on_cancel"
-	}
+        "validate": "premierprint.services.lcv_trigger.validate",
+        "on_submit": "premierprint.services.lcv_trigger.on_submit",
+        "on_cancel": "premierprint.services.lcv_trigger.on_cancel"
+    }
 }
 
 # Defaultni o'chirish (Restartdan keyin SAL-ORD qaytib kelmasligi uchun)
@@ -107,7 +110,7 @@ property_setters = [
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/premierprint/css/premierprint.css"
-app_include_js = "/assets/premierprint/js/stock_entry_custom.js"
+# app_include_js = "/assets/premierprint/js/stock_entry_custom.js"  # Consolidated into doctype_js stock_entry.js
 
 # include js, css files in header of web template
 # web_include_css = "/assets/premierprint/css/premierprint.css"
