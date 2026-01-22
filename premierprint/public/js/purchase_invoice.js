@@ -20,46 +20,49 @@ frappe.ui.form.on('Purchase Invoice', {
     },
 
     // 4. SUBMIT QILISHDAN OLDIN (Narxni Tasdiqlash Dialog)
-    // Dialog HAR SAFAR ochiladi - narxlarni tasdiqlash uchun
+    // Non-blocking: frappe.validated pattern bilan
     before_submit: function (frm) {
-        return new Promise((resolve, reject) => {
-            // PO/PR ga bog'liq itemlarni topish
-            let items_with_po_pr = [];
-            $.each(frm.doc.items || [], function (i, item) {
-                if (item.purchase_order || item.purchase_receipt) {
-                    items_with_po_pr.push(item);
-                }
-            });
+        // Agar narxlar allaqachon tasdiqlangan bo'lsa, o'tkazamiz
+        if (frm.doc.__verified_prices) {
+            // Flagni tozalaymiz (keyingi submit uchun)
+            delete frm.doc.__verified_prices;
+            return;
+        }
 
-            // Agar PO/PR ga bog'liq item bo'lmasa, dialogsiz o'tkazamiz
-            if (items_with_po_pr.length === 0) {
-                resolve();
-                return;
+        // PO/PR ga bog'liq itemlarni topish
+        let items_with_po_pr = [];
+        $.each(frm.doc.items || [], function (i, item) {
+            if (item.purchase_order || item.purchase_receipt) {
+                items_with_po_pr.push(item);
             }
-
-            // Dialog uchun data tayyorlash
-            // Joriy narxlarni ko'rsatadi (foydalanuvchi o'zgartirgan bo'lishi mumkin)
-            let dialog_data = items_with_po_pr.map(item => ({
-                idx: item.idx,
-                item_code: item.item_code,
-                item_name: item.item_name,
-                qty: item.qty,
-                current_rate: item.rate,  // Hozirgi narx (o'zgargan bo'lishi mumkin)
-                current_amount: item.amount,
-                new_rate: item.rate,  // Default qiymati joriy narx
-                new_amount: item.amount  // Default qiymati joriy summa
-            }));
-
-            // Narxni Tasdiqlash Dialog - har safar ochiladi
-            show_price_verification_dialog(frm, dialog_data, resolve, reject);
         });
+
+        // Agar PO/PR ga bog'liq item bo'lmasa, dialogsiz o'tkazamiz
+        if (items_with_po_pr.length === 0) {
+            return;
+        }
+
+        // Submitni vaqtincha to'xtatamiz
+        frappe.validated = false;
+
+        // Dialog uchun data tayyorlash
+        let dialog_data = items_with_po_pr.map(item => ({
+            idx: item.idx,
+            item_code: item.item_code,
+            item_name: item.item_name,
+            qty: item.qty,
+            current_rate: item.rate
+        }));
+
+        // Narxni Tasdiqlash Dialog
+        show_price_verification_dialog(frm, dialog_data);
     }
 });
 
 // --- YORDAMCHI FUNKSIYALAR ---
 
-// Narxni Tasdiqlash Dialog - Faqat ko'rish uchun (Read-Only Summary)
-function show_price_verification_dialog(frm, dialog_data, resolve, reject) {
+// Narxni Tasdiqlash Dialog - Non-blocking pattern
+function show_price_verification_dialog(frm, dialog_data) {
     let d = new frappe.ui.Dialog({
         title: __('Narxlarni Tasdiqlash'),
         indicator: 'blue',
@@ -84,32 +87,28 @@ function show_price_verification_dialog(frm, dialog_data, resolve, reject) {
                 options: generate_items_table_html(dialog_data, frm.doc.currency)
             }
         ],
-        primary_action_label: __("✅ Ha, tasdiqlayman"),
-        secondary_action_label: __("✏️ Ha, o'zgartiraman"),
+        primary_action_label: __("✅ Ha, Tasdiqlayman"),
+        secondary_action_label: __("✏️ Ha, O'zgartiraman"),
         primary_action: () => {
-            // Tasdiqlash - submit qilish
+            // Tasdiqlash - flagni o'rnatib, qayta submit qilish
             d.hide();
-            resolve();
+            frm.doc.__verified_prices = true;
+            frm.save('Submit');
         },
         secondary_action: () => {
             // Foydalanuvchi narxlarni o'zgartirmoqchi - Items jadvaliga fokus
             d.hide();
-
             // Items child table ga scroll va fokus
             scroll_and_focus_items_table(frm);
-
-            // Submission ni to'xtatish (reject)
-            reject();
         }
     });
 
     // Dialog ko'rsatish
     d.show();
 
-    // X tugmasi bosilganda - submission to'xtatiladi
+    // X tugmasi bosilganda - faqat dialogni yopamiz
     d.$wrapper.find('.modal-header .close').on('click', () => {
         d.hide();
-        reject();
     });
 }
 
@@ -138,18 +137,16 @@ function scroll_and_focus_items_table(frm) {
     }
 }
 
-// Jadval HTML yaratish - Faqat ko'rish uchun (Read-Only)
+// Jadval HTML yaratish - Faqat Item, Qty, Rate
 function generate_items_table_html(items, currency) {
     let html = `
         <div style="overflow-x: auto; max-height: 500px; overflow-y: auto;">
             <table class="table table-bordered" style="width: 100%; margin: 0;">
                 <thead style="background: #f5f7fa; position: sticky; top: 0; z-index: 10;">
                     <tr>
-                        <th style="padding: 10px; min-width: 120px;">Item Code</th>
-                        <th style="padding: 10px; min-width: 180px;">Item Name</th>
+                        <th style="padding: 10px; min-width: 120px;">Item</th>
                         <th style="padding: 10px; text-align: right; min-width: 80px;">Qty</th>
-                        <th style="padding: 10px; text-align: right; min-width: 120px;">Narx</th>
-                        <th style="padding: 10px; text-align: right; min-width: 120px;">Summa</th>
+                        <th style="padding: 10px; text-align: right; min-width: 120px;">Rate</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -160,18 +157,13 @@ function generate_items_table_html(items, currency) {
             <tr>
                 <td style="padding: 8px; vertical-align: middle;">
                     <b>${item.item_code}</b>
-                </td>
-                <td style="padding: 8px; vertical-align: middle;">
-                    ${item.item_name}
+                    <br><small style="color: #666;">${item.item_name}</small>
                 </td>
                 <td style="padding: 8px; text-align: right; vertical-align: middle;">
                     <span style="color: #666;">${format_number(item.qty, null, 2)}</span>
                 </td>
                 <td style="padding: 8px; text-align: right; vertical-align: middle;">
                     <span style="font-weight: bold; color: #2490ef;">${format_currency(item.current_rate, currency)}</span>
-                </td>
-                <td style="padding: 8px; text-align: right; vertical-align: middle;">
-                    <span style="font-weight: bold; color: #155724;">${format_currency(item.current_amount, currency)}</span>
                 </td>
             </tr>
         `;
