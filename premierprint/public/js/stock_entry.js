@@ -54,19 +54,13 @@ frappe.ui.form.on('Stock Entry', {
     },
 
     onload: function (frm) {
-        // Set naming series on load
-        if (frm.is_new()) {
-            set_stock_naming_series(frm);
-        }
+
         toggle_sales_order_fields(frm);
         toggle_supplier_field(frm);
     },
 
     refresh: function (frm) {
-        // Set naming series on refresh (new docs)
-        if (frm.is_new()) {
-            set_stock_naming_series(frm);
-        }
+
 
         // Show/hide fields based on stock entry type
         toggle_sales_order_fields(frm);
@@ -83,10 +77,7 @@ frappe.ui.form.on('Stock Entry', {
         }
     },
 
-    company: function (frm) {
-        // Update naming series when company changes
-        set_stock_naming_series(frm);
-    },
+
 
     stock_entry_type: function (frm) {
         toggle_sales_order_fields(frm);
@@ -123,24 +114,7 @@ frappe.ui.form.on('Stock Entry', {
 
 // ==================== NAMING SERIES ====================
 
-/**
- * Company ga qarab naming series o'rnatish
- */
-function set_stock_naming_series(frm) {
-    if (!frm.doc.company) return;
 
-    const series_map = {
-        "Premier Print": "ПП-#######",
-        "Полиграфия": "П-#######",
-        "Сувенир": "С-#######",
-        "Реклама": "Р-#######"
-    };
-
-    let target_series = series_map[frm.doc.company] || "";
-    if (target_series && frm.doc.naming_series !== target_series) {
-        frm.set_value("naming_series", target_series);
-    }
-}
 
 // ==================== SUPPLIER FIELD ====================
 
