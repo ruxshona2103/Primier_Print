@@ -33,11 +33,6 @@ from premierprint.services.transport_lcv import (
 	validate_transport_lcv_creation,
 	get_purchase_receipts_from_pi
 )
-from premierprint.services.variance_lcv import (
-	create_price_variance_lcv,
-	detect_variance_items,
-	validate_variance_lcv_creation
-)
 
 
 def validate(doc, method):
@@ -92,23 +87,6 @@ def on_submit(doc, method):
 		)
 		frappe.msgprint(
 			_("Transport LCV creation failed: {0}<br>Purchase Invoice submitted successfully, but please create LCV manually.").format(str(e)),
-			indicator="orange",
-			alert=True
-		)
-
-	# ============================================================
-	# LOGIC B: CREATE PRICE VARIANCE LCV
-	# ============================================================
-	try:
-		_handle_variance_lcv_creation(doc)
-	except Exception as e:
-		# Log error but don't block PI submission
-		frappe.log_error(
-			message=frappe.get_traceback(),
-			title=f"Price Variance LCV Creation Failed for PI: {doc.name}"
-		)
-		frappe.msgprint(
-			_("Price Variance LCV creation failed: {0}<br>Purchase Invoice submitted successfully, but please create LCV manually.").format(str(e)),
 			indicator="orange",
 			alert=True
 		)
@@ -214,46 +192,6 @@ def _handle_transport_lcv_creation(doc):
 	if lcv_name:
 		# Success message already shown by create_transport_lcv
 		pass
-
-
-def _handle_variance_lcv_creation(doc):
-	"""
-	Handle Price Variance LCV creation logic.
-
-	STEPS:
-	1. Detect variance items (using variance_lcv module)
-	2. Validate if variance LCV should be created
-	3. Call variance_lcv.create_price_variance_lcv
-
-	Args:
-		doc: Purchase Invoice document
-	"""
-
-	# Detect items with price variance
-	variance_items = detect_variance_items(doc)
-
-	if not variance_items:
-		# No variance detected - skip silently
-		return
-
-	# Validate if variance LCV can be created
-	is_valid, error_msg = validate_variance_lcv_creation(doc)
-	if not is_valid:
-		frappe.msgprint(
-			_("Price Variance LCV not created: {0}").format(error_msg),
-			indicator="blue",
-			alert=True
-		)
-		return
-
-	# Create Price Variance LCV
-	lcv_doc = create_price_variance_lcv(doc, variance_items)
-
-	if lcv_doc:
-		# Success message already shown by create_price_variance_lcv
-		pass
-
-
 def _cancel_linked_lcvs(doc, method):
 	"""
 	Cancel all Landed Cost Vouchers linked to this Purchase Invoice.
@@ -462,18 +400,6 @@ def reprocess_lcv(pi_name, lcv_type=None):
 			frappe.log_error(
 				message=frappe.get_traceback(),
 				title=f"Manual Transport LCV Creation Failed: {pi_name}"
-			)
-
-	# Process Variance LCV
-	if not lcv_type or lcv_type == "Price Variance":
-		try:
-			_handle_variance_lcv_creation(doc)
-			results["variance_lcv"] = "Success"
-		except Exception as e:
-			results["errors"].append(f"Variance LCV: {str(e)}")
-			frappe.log_error(
-				message=frappe.get_traceback(),
-				title=f"Manual Variance LCV Creation Failed: {pi_name}"
 			)
 
 	return results
