@@ -21,6 +21,8 @@ frappe.ui.form.on("Asosiy panel", {
         frm.set_value("supplier", "");
         frm.set_value("target_company", "");
         frm.set_value("target_warehouse", "");
+        // Senior Developer Fix: Clear target warehouse fields when operation type changes
+        frm.set_value("to_warehouse", "");
     },
     customer(frm) {
         if (frm.doc.customer) {
@@ -63,8 +65,8 @@ frappe.ui.form.on("Asosiy panel", {
                 }
             }
 
-            // ISSUE 6: Supplier ONLY for purchase_request and usluga_po_zakasu
-            if (['purchase_request', 'usluga_po_zakasu'].includes(frm.doc.operation_type)) {
+            // Supplier ONLY for usluga_po_zakasu (service orders)
+            if (frm.doc.operation_type === 'usluga_po_zakasu') {
                 frm.toggle_display('supplier', true);
                 frm.toggle_reqd('supplier', true);
             }
@@ -81,6 +83,17 @@ frappe.ui.form.on("Asosiy panel", {
                 frm.toggle_reqd(['from_warehouse', 'to_warehouse'], true);
             }
 
+            // Senior Developer Fix: Hide Target Warehouse for Material Issue to improve UX
+            if (frm.doc.operation_type === 'material_issue') {
+                frm.toggle_display('to_warehouse', false);
+                frm.toggle_display('target_company', false);
+                frm.toggle_reqd('to_warehouse', false);
+                frm.toggle_reqd('target_company', false);
+                // Ensure from_warehouse is shown and mandatory
+                frm.toggle_display('from_warehouse', true);
+                frm.toggle_reqd('from_warehouse', true);
+            }
+
             // ISSUE 1, 2, 4, 5: Sales Order fields for production, rasxod_po_zakasu, usluga_po_zakasu
             if (['production', 'rasxod_po_zakasu', 'usluga_po_zakasu'].includes(frm.doc.operation_type)) {
                 frm.toggle_display(['sales_order', 'sales_order_item'], true);
@@ -88,9 +101,18 @@ frappe.ui.form.on("Asosiy panel", {
             }
 
             // ISSUE 4 & 5: Production-specific fields
-            if (['production', 'usluga_po_zakasu'].includes(frm.doc.operation_type)) {
-                frm.toggle_display(['finished_good', 'production_qty', 'to_warehouse'], true);
-                frm.toggle_reqd(['finished_good', 'production_qty', 'from_warehouse', 'to_warehouse'], true);
+            // Show finished_good and production_qty for operations related to sales orders
+            if (['production', 'rasxod_po_zakasu', 'usluga_po_zakasu'].includes(frm.doc.operation_type)) {
+                frm.toggle_display(['finished_good', 'production_qty'], true);
+
+                // Only production and usluga_po_zakasu actually produce something
+                if (['production', 'usluga_po_zakasu'].includes(frm.doc.operation_type)) {
+                    frm.toggle_display('to_warehouse', true);
+                    frm.toggle_reqd(['finished_good', 'production_qty', 'from_warehouse', 'to_warehouse'], true);
+                } else {
+                    // rasxod_po_zakasu: show but don't require
+                    frm.toggle_reqd(['finished_good', 'production_qty'], false);
+                }
             }
         }
     },
@@ -118,21 +140,19 @@ frappe.ui.form.on("Asosiy panel", {
             };
         });
 
-        // Sales Order Item query - FILTER by selected Sales Order (like Stock Entry)
+        // Sales Order Item query - Use custom function to bypass permissions
         frm.set_query("sales_order_item", function () {
-            let so = frm.doc.sales_order;
-            if (!so) {
+            if (!frm.doc.sales_order) {
                 frappe.show_alert({
-                    message: __('Avval Sales Order tanlang'),
+                    message: __('Please select Sales Order first'),
                     indicator: 'orange'
                 });
                 return { filters: { name: ['=', ''] } };
             }
             return {
-                query: "premierprint.utils.stock_entry.get_sales_order_items_query",
+                query: "premierprint.premierprint.doctype.asosiy_panel.asosiy_panel.get_so_items",
                 filters: {
-                    parent: so,
-                    sales_order: so
+                    sales_order: frm.doc.sales_order
                 }
             };
         });
@@ -146,15 +166,17 @@ frappe.ui.form.on("Asosiy panel", {
         frm.set_value("finished_good", "");
     },
     sales_order_item(frm) {
-        // Auto-fetch item_code and qty from Sales Order Item
+        // Auto-fetch item_code from Sales Order Item using custom server function
         if (frm.doc.sales_order_item) {
-            frappe.db.get_value("Sales Order Item", frm.doc.sales_order_item, ["item_code", "qty"], (r) => {
-                if (r) {
-                    if (r.item_code) {
-                        frm.set_value("finished_good", r.item_code);
-                    }
-                    if (r.qty && !frm.doc.production_qty) {
-                        frm.set_value("production_qty", r.qty);
+            frappe.call({
+                method: "premierprint.premierprint.doctype.asosiy_panel.asosiy_panel.get_item_details_from_so_item",
+                args: {
+                    so_item: frm.doc.sales_order_item
+                },
+                callback: function (r) {
+                    if (r.message) {
+                        frm.set_value("finished_good", r.message);
+                        frm.refresh_field("finished_good");
                     }
                 }
             });
@@ -172,32 +194,81 @@ frappe.ui.form.on("Asosiy panel", {
     }
 });
 
-frappe.ui.form.on("Asosiy panel item", {
-    item_code(frm, cdt, cdn) {
+frappe.ui.form.on('Asosiy panel', {
+    // Sahifa yuklanganda va Target Company o'zgarganda filtrni yangilaymiz
+    refresh: function (frm) {
+        frm.trigger('set_warehouse_filters');
+    },
+
+    target_company: function (frm) {
+        // Target Company o'zgarsa, To Warehouse fieldini tozalaymiz va filtrni yangilaymiz
+        frm.set_value('to_warehouse', '');
+        frm.trigger('set_warehouse_filters');
+    },
+
+    company: function (frm) {
+        // Asosiy Company o'zgarsa, From Warehouse filtrini yangilaymiz
+        frm.set_value('from_warehouse', '');
+        frm.trigger('set_warehouse_filters');
+    },
+
+    set_warehouse_filters: function (frm) {
+        // 1. "From Warehouse" filtrini o'rnatish (Asosiy Company bo'yicha)
+        frm.set_query('from_warehouse', function () {
+            return {
+                filters: {
+                    'company': frm.doc.company,
+                    'is_group': 0 // Guruh bo'lmagan, real omborlar chiqsin
+                }
+            };
+        });
+
+        // 2. "To Warehouse" filtrini o'rnatish (Target Company bo'yicha)
+        if (frm.doc.target_company) {
+            frm.set_query('to_warehouse', function () {
+                return {
+                    filters: {
+                        'company': frm.doc.target_company,
+                        'is_group': 0
+                    }
+                };
+            });
+        }
+    }
+});
+
+// Child Table: Asosiy panel item
+frappe.ui.form.on('Asosiy panel item', {
+    item_code: function (frm, cdt, cdn) {
         let row = locals[cdt][cdn];
         if (row.item_code) {
-            frappe.db.get_value("Item", row.item_code, ["item_name", "stock_uom", "valuation_rate", "standard_rate", "is_stock_item"], (r) => {
+            // Fetch item details including is_stock_item
+            frappe.db.get_value('Item', row.item_code, ['item_name', 'is_stock_item', 'stock_uom'], (r) => {
                 if (r) {
-                    frappe.model.set_value(cdt, cdn, "item_name", r.item_name);
-                    frappe.model.set_value(cdt, cdn, "uom", r.stock_uom);
-                    frappe.model.set_value(cdt, cdn, "is_stock_item", r.is_stock_item);
-                    let rate = r.valuation_rate || r.standard_rate || 0;
-                    frappe.model.set_value(cdt, cdn, "rate", rate);
+                    frappe.model.set_value(cdt, cdn, 'item_name', r.item_name);
+                    frappe.model.set_value(cdt, cdn, 'is_stock_item', r.is_stock_item);
+                    if (!row.uom) {
+                        frappe.model.set_value(cdt, cdn, 'uom', r.stock_uom);
+                    }
                 }
             });
         }
     },
-    qty(frm, cdt, cdn) {
-        let row = locals[cdt][cdn];
-        frappe.model.set_value(cdt, cdn, "amount", row.qty * row.rate);
-        frm.events.calculate_totals(frm);
+    qty: function (frm, cdt, cdn) {
+        calculate_row_amount(frm, cdt, cdn);
+        frm.trigger('calculate_totals');
     },
-    rate(frm, cdt, cdn) {
-        let row = locals[cdt][cdn];
-        frappe.model.set_value(cdt, cdn, "amount", row.qty * row.rate);
-        frm.events.calculate_totals(frm);
+    rate: function (frm, cdt, cdn) {
+        calculate_row_amount(frm, cdt, cdn);
+        frm.trigger('calculate_totals');
     },
-    items_remove(frm) {
-        frm.events.calculate_totals(frm);
+    items_remove: function (frm) {
+        frm.trigger('calculate_totals');
     }
 });
+
+function calculate_row_amount(frm, cdt, cdn) {
+    let row = locals[cdt][cdn];
+    let amount = flt(row.qty) * flt(row.rate);
+    frappe.model.set_value(cdt, cdn, 'amount', amount);
+}

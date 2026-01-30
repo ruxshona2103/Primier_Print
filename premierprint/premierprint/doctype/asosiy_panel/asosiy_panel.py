@@ -45,6 +45,7 @@ class Asosiypanel(Document):
         se.stock_entry_type = 'Repack'
         se.purpose = 'Repack'
         se.company = self.company
+        se.posting_date = self.posting_date
         se.from_warehouse = self.from_warehouse
         se.to_warehouse = self.to_warehouse
         
@@ -58,15 +59,18 @@ class Asosiypanel(Document):
             # Use stored is_stock_item from child row (fetched by JS on item selection)
             is_stock = item.is_stock_item if hasattr(item, 'is_stock_item') and item.is_stock_item is not None else frappe.db.get_value("Item", item.item_code, "is_stock_item")
             
+            # Get UOM if not set
+            uom = item.uom if item.uom else frappe.db.get_value("Item", item.item_code, "stock_uom")
+            
             if is_stock:
                 # Consumption: Stock items go to items table (rasxod logic)
                 se.append('items', {
                     'item_code': item.item_code,
                     'item_name': item.item_name,
                     'qty': item.qty,
-                    'uom': item.uom,
+                    'uom': uom,
                     's_warehouse': self.from_warehouse,
-                    't_warehouse': None
+                    't_warehouse': None  # CRITICAL: Must be None for consumption
                 })
             else:
                 # Service items: Sum up the amount for additional_costs (usluga logic)
@@ -81,11 +85,13 @@ class Asosiypanel(Document):
             })
         
         # Production: Add finished good row
+        finished_uom = frappe.db.get_value("Item", self.finished_good, "stock_uom")
         se.append('items', {
             'item_code': self.finished_good,
             'qty': self.production_qty,
+            'uom': finished_uom,
             't_warehouse': self.to_warehouse,
-            's_warehouse': None,
+            's_warehouse': None,  # CRITICAL: Must be None for production
             'is_finished_item': 1
         })
         
@@ -115,6 +121,7 @@ class Asosiypanel(Document):
         se.stock_entry_type = 'Material Issue'
         se.purpose = 'Material Issue'
         se.company = self.company
+        se.posting_date = self.posting_date
         se.from_warehouse = self.from_warehouse
         
         # Link to Sales Order
@@ -152,6 +159,7 @@ class Asosiypanel(Document):
         dn = frappe.new_doc('Delivery Note')
         dn.customer = self.customer
         dn.company = self.company
+        dn.posting_date = self.posting_date
         dn.currency = self.currency
         dn.selling_price_list = self.price_list
         dn.set_warehouse = self.from_warehouse
@@ -216,7 +224,9 @@ class Asosiypanel(Document):
         
         se = frappe.new_doc('Stock Entry')
         se.purpose = purpose
+        se.stock_entry_type = purpose # Mapping type strictly to purpose for these cases
         se.company = self.company
+        se.posting_date = self.posting_date
         se.from_warehouse = self.from_warehouse
         if purpose == 'Material Transfer':
             se.to_warehouse = self.to_warehouse
@@ -244,6 +254,7 @@ class Asosiypanel(Document):
         mr = frappe.new_doc('Material Request')
         mr.material_request_type = 'Purchase'
         mr.company = self.company
+        mr.transaction_date = self.posting_date
         
         for item in self.items:
             mr.append('items', {
@@ -269,6 +280,7 @@ class Asosiypanel(Document):
         si.company = self.company
         si.currency = self.currency
         si.selling_price_list = self.price_list
+        si.posting_date = self.posting_date
         si.due_date = self.payment_due_date
         
         for item in self.items:
@@ -295,3 +307,63 @@ class Asosiypanel(Document):
                      actual_qty = frappe.db.get_value("Bin", {"item_code": item.item_code, "warehouse": self.from_warehouse}, "actual_qty") or 0
                      if actual_qty < item.qty:
                          frappe.throw(_("Insufficient stock for Item {0} in Warehouse {1}. Available: {2}, Required: {3}").format(item.item_code, self.from_warehouse, actual_qty, item.qty))
+
+@frappe.whitelist()
+@frappe.validate_and_sanitize_search_inputs
+def get_so_items(doctype, txt, searchfield, start, page_len, filters):
+    """Get Sales Order Items for a given Sales Order, bypassing permissions.
+    
+    This function is whitelisted to allow frontend queries without permission checks.
+    Standard Frappe query function signature.
+    """
+    # Extract sales_order from filters
+    import json
+    if isinstance(filters, str):
+        filters = json.loads(filters)
+    
+    sales_order = filters.get("sales_order") if filters else None
+    
+    if not sales_order:
+        return []
+    
+    # Build search condition
+    search_condition = ""
+    if txt:
+        search_condition = f"AND (soi.name LIKE %(txt)s OR soi.item_code LIKE %(txt)s OR soi.item_name LIKE %(txt)s)"
+    
+    # Query using SQL - return as list of tuples for Frappe compatibility
+    # First column is the ID, second column is displayed as description
+    return frappe.db.sql(f"""
+        SELECT 
+            soi.name,
+            CONCAT(soi.item_code, ' - ', soi.item_name) as description
+        FROM `tabSales Order Item` soi
+        WHERE soi.parent = %(sales_order)s
+        {search_condition}
+        ORDER BY soi.idx
+        LIMIT %(start)s, %(page_len)s
+    """, {
+        "sales_order": sales_order,
+        "txt": f"%{txt}%",
+        "start": start,
+        "page_len": page_len
+    })
+
+@frappe.whitelist()
+def get_item_details_from_so_item(so_item):
+    """Fetch item_code from a Sales Order Item.
+    
+    This directly fetches from DB bypassing Permission Manager.
+    
+    Args:
+        so_item: Name of the Sales Order Item
+        
+    Returns:
+        str: item_code
+    """
+    if not so_item:
+        return None
+    
+    # frappe.db.get_value bypasses permissions by default when called from whitelisted function
+    item_code = frappe.db.get_value("Sales Order Item", so_item, "item_code")
+    return item_code
