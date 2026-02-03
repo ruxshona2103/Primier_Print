@@ -1,0 +1,83 @@
+{
+    "actions": [],
+    "allow_rename": 1,
+    "creation": "2026-01-26 16:38:52.788464",
+    "doctype": "DocType",
+    "editable_grid": 1,
+    "engine": "InnoDB",
+    "field_order": [
+        "item_code",
+        "item_name",
+        "is_stock_item",
+        "uom",
+        "qty",
+        "rate",
+        "amount"
+    ],
+    "fields": [
+        {
+            "columns": 2,
+            "fieldname": "item_code",
+            "fieldtype": "Link",
+            "in_list_view": 1,
+            "label": "Item Code",
+            "options": "Item"
+        },
+        {
+            "columns": 2,
+            "fetch_from": "item_code.item_name",
+            "fieldname": "item_name",
+            "fieldtype": "Data",
+            "in_list_view": 1,
+            "label": "Item Name "
+        },
+        {
+            "fieldname": "is_stock_item",
+            "fieldtype": "Check",
+            "label": "Is Stock Item",
+            "read_only": 1
+        },
+        {
+            "columns": 1,
+            "fieldname": "uom",
+            "fieldtype": "Link",
+            "in_list_view": 1,
+            "label": "UOM",
+            "options": "UOM"
+        },
+        {
+            "columns": 1,
+            "fieldname": "qty",
+            "fieldtype": "Float",
+            "in_list_view": 1,
+            "label": "Qty"
+        },
+        {
+            "fieldname": "rate",
+            "fieldtype": "Float",
+            "in_list_view": 1,
+            "label": "Rate"
+        },
+        {
+            "fieldname": "amount",
+            "fieldtype": "Float",
+            "in_list_view": 1,
+            "label": "Amount"
+        }
+    ],
+    "grid_page_length": 50,
+    "index_web_pages_for_search": 1,
+    "istable": 1,
+    "links": [],
+    "modified": "2026-01-28 14:23:46.973976",
+    "modified_by": "Administrator",
+    "module": "premierprint",
+    "name": "Asosiy panel item",
+    "owner": "Administrator",
+    "permissions": [],
+    "row_format": "Dynamic",
+    "rows_threshold_for_grid_search": 20,
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "states": []
+}

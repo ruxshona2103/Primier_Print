@@ -77,6 +77,9 @@ doc_events = {
         "validate": "premierprint.services.lcv_trigger.validate",
         "on_submit": "premierprint.services.lcv_trigger.on_submit",
         "on_cancel": "premierprint.services.lcv_trigger.on_cancel"
+    },
+    "Purchase Receipt": {
+        "on_submit": "premierprint.utils.purchase_receipt.on_submit"
     }
 }
 
