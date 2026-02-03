@@ -30,90 +30,186 @@ frappe.ui.form.on("Asosiy panel", {
                 if (r && r.is_internal_customer) {
                     frm.set_value("target_company", r.represents_company);
                     frm.toggle_display("target_warehouse", true);
+                    // Auto-set Inter-Company Price List for internal customers
+                    frm.trigger("set_inter_company_price_list");
                 } else {
                     frm.set_value("target_company", "");
                     frm.toggle_display("target_warehouse", false);
+                    // Allow manual price_list selection for non-internal customers
+                    frm.set_df_property("price_list", "read_only", 0);
                 }
                 frm.trigger("toggle_ui");
                 frm.trigger("setup_queries");
             });
+        } else {
+            // Customer cleared - reset price_list and allow manual selection
+            frm.set_value("target_company", "");
+            frm.set_df_property("price_list", "read_only", 0);
+            frm.trigger("toggle_ui");
         }
+    },
+    set_inter_company_price_list(frm) {
+        // Check if Inter-Company Price List exists and set it automatically
+        const INTER_COMPANY_PRICE_LIST = "Inter-Company Price List";
+        
+        frappe.db.exists("Price List", INTER_COMPANY_PRICE_LIST).then(exists => {
+            if (exists) {
+                frm.set_value("price_list", INTER_COMPANY_PRICE_LIST);
+                // Make price_list read-only for internal customers
+                frm.set_df_property("price_list", "read_only", 1);
+                frappe.show_alert({
+                    message: __("Inter-Company Price List avtomatik tanlandi"),
+                    indicator: 'green'
+                }, 3);
+            } else {
+                // Price List does not exist - show error message
+                frappe.msgprint({
+                    title: __("Price List Topilmadi"),
+                    message: __("Iltimos, Price Listlar ichida <b>'Inter-Company Price List'</b> nomli narxnomani yarating va unda <b>'Buying'</b> hamda <b>'Selling'</b> galochkalarini yoqing."),
+                    indicator: 'red'
+                });
+                // Clear the price_list and allow manual entry as fallback
+                frm.set_value("price_list", "");
+                frm.set_df_property("price_list", "read_only", 0);
+            }
+        });
     },
     toggle_ui(frm) {
         // Default hide and un-require all optional fields
         const fields_to_toggle = [
             'customer', 'currency', 'price_list', 'supplier',
-            'from_warehouse', 'to_warehouse', 'target_warehouse',
+            'from_warehouse', 'to_warehouse', 'target_warehouse', 'target_company',
             'purpose', 'finished_good', 'production_qty',
             'sales_order', 'sales_order_item'
         ];
         frm.toggle_display(fields_to_toggle, false);
         frm.toggle_reqd(fields_to_toggle, false);
 
-        // ISSUE 3: Purpose field is completely hidden (never shown)
-
         if (frm.doc.operation_type) {
-            // Delivery Note / Service Sale
-            if (['delivery_note', 'service_sale'].includes(frm.doc.operation_type)) {
-                frm.toggle_display(['customer', 'currency', 'price_list'], true);
-                frm.toggle_reqd(['customer', 'currency', 'price_list'], true);
-
-                // ISSUE 6: target_warehouse ONLY for delivery_note with internal customer
-                if (frm.doc.operation_type === 'delivery_note' && frm.doc.target_company) {
-                    frm.toggle_display("target_warehouse", true);
-                    frm.toggle_reqd("target_warehouse", true);
+            // ============================================================
+            // DELIVERY NOTE LOGIC - Full Inter-Company Support
+            // ============================================================
+            if (frm.doc.operation_type === 'delivery_note') {
+                // Always show customer, currency, price_list, from_warehouse
+                frm.toggle_display(['customer', 'currency', 'price_list', 'from_warehouse'], true);
+                frm.toggle_reqd(['customer', 'currency', 'price_list', 'from_warehouse'], true);
+                
+                // Show target_company (read-only, auto-filled from internal customer)
+                frm.toggle_display('target_company', true);
+                
+                // target_warehouse ONLY shown when internal customer is selected
+                if (frm.doc.target_company) {
+                    frm.toggle_display('target_warehouse', true);
+                    frm.toggle_reqd('target_warehouse', true);
                 }
             }
 
-            // Supplier ONLY for usluga_po_zakasu (service orders)
-            if (frm.doc.operation_type === 'usluga_po_zakasu') {
+            // ============================================================
+            // SERVICE SALE LOGIC
+            // ============================================================
+            if (frm.doc.operation_type === 'service_sale') {
+                frm.toggle_display(['customer', 'currency', 'price_list'], true);
+                frm.toggle_reqd(['customer', 'currency', 'price_list'], true);
+                // No warehouse needed for service sale
+            }
+
+            // ============================================================
+            // SUPPLIER LOGIC - For production, usluga_po_zakasu, purchase_request
+            // ============================================================
+            if (['production', 'usluga_po_zakasu', 'purchase_request'].includes(frm.doc.operation_type)) {
                 frm.toggle_display('supplier', true);
-                frm.toggle_reqd('supplier', true);
+                // Supplier is optional (not mandatory) - can be used for reference
+                frm.toggle_reqd('supplier', false);
             }
 
-            // Most operations (except service_sale) need from_warehouse
-            if (frm.doc.operation_type !== 'service_sale') {
-                frm.toggle_display('from_warehouse', true);
-                frm.toggle_reqd('from_warehouse', true);
-            }
-
-            // Material Transfer needs to_warehouse
+            // ============================================================
+            // MATERIAL TRANSFER LOGIC
+            // ============================================================
             if (frm.doc.operation_type === 'material_transfer') {
-                frm.toggle_display('to_warehouse', true);
+                frm.toggle_display(['from_warehouse', 'to_warehouse'], true);
                 frm.toggle_reqd(['from_warehouse', 'to_warehouse'], true);
             }
 
-            // Senior Developer Fix: Hide Target Warehouse for Material Issue to improve UX
+            // ============================================================
+            // MATERIAL ISSUE LOGIC
+            // ============================================================
             if (frm.doc.operation_type === 'material_issue') {
-                frm.toggle_display('to_warehouse', false);
-                frm.toggle_display('target_company', false);
-                frm.toggle_reqd('to_warehouse', false);
-                frm.toggle_reqd('target_company', false);
-                // Ensure from_warehouse is shown and mandatory
+                frm.toggle_display('from_warehouse', true);
+                frm.toggle_reqd('from_warehouse', true);
+                // No to_warehouse for Material Issue
+            }
+
+            // ============================================================
+            // PURCHASE REQUEST LOGIC
+            // ============================================================
+            if (frm.doc.operation_type === 'purchase_request') {
                 frm.toggle_display('from_warehouse', true);
                 frm.toggle_reqd('from_warehouse', true);
             }
 
-            // ISSUE 1, 2, 4, 5: Sales Order fields for production, rasxod_po_zakasu, usluga_po_zakasu
+            // ============================================================
+            // PRODUCTION HUB: Sales Order related operations
+            // ============================================================
             if (['production', 'rasxod_po_zakasu', 'usluga_po_zakasu'].includes(frm.doc.operation_type)) {
+                // All 3 need Sales Order link
                 frm.toggle_display(['sales_order', 'sales_order_item'], true);
                 frm.toggle_reqd('sales_order', true);
+                // Show finished_good and production_qty
+                frm.toggle_display(['finished_good', 'production_qty'], true);
             }
 
-            // ISSUE 4 & 5: Production-specific fields
-            // Show finished_good and production_qty for operations related to sales orders
-            if (['production', 'rasxod_po_zakasu', 'usluga_po_zakasu'].includes(frm.doc.operation_type)) {
-                frm.toggle_display(['finished_good', 'production_qty'], true);
+            // usluga_po_zakasu - Service costs only, NO warehouses needed
+            if (frm.doc.operation_type === 'usluga_po_zakasu') {
+                frm.toggle_display(['from_warehouse', 'to_warehouse'], false);
+                frm.toggle_reqd(['from_warehouse', 'to_warehouse'], false);
+                frm.toggle_reqd(['finished_good', 'production_qty'], true);
+            }
 
-                // Only production and usluga_po_zakasu actually produce something
-                if (['production', 'usluga_po_zakasu'].includes(frm.doc.operation_type)) {
-                    frm.toggle_display('to_warehouse', true);
-                    frm.toggle_reqd(['finished_good', 'production_qty', 'from_warehouse', 'to_warehouse'], true);
-                } else {
-                    // rasxod_po_zakasu: show but don't require
-                    frm.toggle_reqd(['finished_good', 'production_qty'], false);
+            // rasxod_po_zakasu - Material Transfer to WIP
+            if (frm.doc.operation_type === 'rasxod_po_zakasu') {
+                frm.toggle_display(['from_warehouse', 'to_warehouse'], true);
+                frm.toggle_reqd(['from_warehouse', 'to_warehouse'], true);
+                // Auto-default to WIP warehouse
+                if (!frm.doc.to_warehouse && frm.doc.company) {
+                    frm.trigger('set_wip_warehouse_default');
                 }
             }
+
+            // production - The Aggregator
+            if (frm.doc.operation_type === 'production') {
+                frm.toggle_display(['from_warehouse', 'to_warehouse'], true);
+                frm.toggle_reqd(['finished_good', 'production_qty', 'from_warehouse', 'to_warehouse'], true);
+            }
+        }
+    },
+    set_wip_warehouse_default(frm) {
+        // Set default WIP warehouse for rasxod_po_zakasu operation
+        if (frm.doc.operation_type === 'rasxod_po_zakasu' && frm.doc.company && !frm.doc.to_warehouse) {
+            // Search for WIP warehouse in the company
+            frappe.db.get_value('Warehouse', 
+                {
+                    'company': frm.doc.company,
+                    'warehouse_name': ['like', '%Work In Progress%']
+                }, 
+                'name'
+            ).then(r => {
+                if (r && r.message && r.message.name) {
+                    frm.set_value('to_warehouse', r.message.name);
+                } else {
+                    // Try alternative naming convention
+                    frappe.db.get_value('Warehouse', 
+                        {
+                            'company': frm.doc.company,
+                            'warehouse_name': ['like', '%WIP%']
+                        }, 
+                        'name'
+                    ).then(r2 => {
+                        if (r2 && r2.message && r2.message.name) {
+                            frm.set_value('to_warehouse', r2.message.name);
+                        }
+                    });
+                }
+            });
         }
     },
     setup_queries(frm) {
@@ -131,6 +227,15 @@ frappe.ui.form.on("Asosiy panel", {
                 return { filters: { company: frm.doc.target_company } };
             });
         }
+
+        // Supplier filter - show only active (enabled) suppliers
+        frm.set_query("supplier", () => {
+            return {
+                filters: {
+                    'disabled': 0
+                }
+            };
+        });
 
         // Sales Order query - show customer name (like Stock Entry)
         frm.set_query("sales_order", function () {
