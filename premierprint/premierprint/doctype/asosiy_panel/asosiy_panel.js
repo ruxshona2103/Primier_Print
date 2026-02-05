@@ -5,6 +5,15 @@ frappe.ui.form.on("Asosiy panel", {
     },
     company(frm) {
         frm.trigger("setup_queries");
+        // Clear warehouses when company changes and reset defaults
+        frm.set_value('from_warehouse', '');
+        frm.set_value('to_warehouse', '');
+        // Re-apply warehouse defaults based on operation type
+        if (frm.doc.operation_type === 'rasxod_po_zakasu') {
+            frm.trigger('set_wip_warehouse_default');
+        } else if (frm.doc.operation_type === 'production') {
+            frm.trigger('set_production_warehouses');
+        }
     },
     operation_type(frm) {
         // Clear all operation-specific fields when type changes
@@ -179,35 +188,127 @@ frappe.ui.form.on("Asosiy panel", {
             if (frm.doc.operation_type === 'production') {
                 frm.toggle_display(['from_warehouse', 'to_warehouse'], true);
                 frm.toggle_reqd(['finished_good', 'production_qty', 'from_warehouse', 'to_warehouse'], true);
+                // Auto-set WIP warehouse as from_warehouse (source for consumption)
+                if (!frm.doc.from_warehouse && frm.doc.company) {
+                    frm.trigger('set_production_warehouses');
+                }
+            }
+        }
+    },
+    set_production_warehouses(frm) {
+        // Set default warehouses for production operation
+        // from_warehouse = WIP (source), to_warehouse = Finished Goods (target)
+        if (frm.doc.operation_type === 'production' && frm.doc.company) {
+            // Set WIP as from_warehouse
+            if (!frm.doc.from_warehouse) {
+                frappe.call({
+                    method: 'frappe.client.get_list',
+                    args: {
+                        doctype: 'Warehouse',
+                        filters: {
+                            'company': frm.doc.company,
+                            'warehouse_name': ['like', '%Work In Progress%'],
+                            'is_group': 0
+                        },
+                        fields: ['name'],
+                        limit_page_length: 1
+                    },
+                    async: false,
+                    callback: function(r) {
+                        if (r.message && r.message.length > 0) {
+                            frm.set_value('from_warehouse', r.message[0].name);
+                        } else {
+                            // Try WIP naming
+                            frappe.call({
+                                method: 'frappe.client.get_list',
+                                args: {
+                                    doctype: 'Warehouse',
+                                    filters: {
+                                        'company': frm.doc.company,
+                                        'warehouse_name': ['like', '%WIP%'],
+                                        'is_group': 0
+                                    },
+                                    fields: ['name'],
+                                    limit_page_length: 1
+                                },
+                                async: false,
+                                callback: function(r2) {
+                                    if (r2.message && r2.message.length > 0) {
+                                        frm.set_value('from_warehouse', r2.message[0].name);
+                                    }
+                                }
+                            });
+                        }
+                    }
+                });
+            }
+            
+            // Set Finished Goods as to_warehouse
+            if (!frm.doc.to_warehouse) {
+                frappe.call({
+                    method: 'frappe.client.get_list',
+                    args: {
+                        doctype: 'Warehouse',
+                        filters: {
+                            'company': frm.doc.company,
+                            'warehouse_name': ['like', '%Finished Goods%'],
+                            'is_group': 0
+                        },
+                        fields: ['name'],
+                        limit_page_length: 1
+                    },
+                    async: false,
+                    callback: function(r) {
+                        if (r.message && r.message.length > 0) {
+                            frm.set_value('to_warehouse', r.message[0].name);
+                        }
+                    }
+                });
             }
         }
     },
     set_wip_warehouse_default(frm) {
         // Set default WIP warehouse for rasxod_po_zakasu operation
         if (frm.doc.operation_type === 'rasxod_po_zakasu' && frm.doc.company && !frm.doc.to_warehouse) {
-            // Search for WIP warehouse in the company
-            frappe.db.get_value('Warehouse', 
-                {
-                    'company': frm.doc.company,
-                    'warehouse_name': ['like', '%Work In Progress%']
-                }, 
-                'name'
-            ).then(r => {
-                if (r && r.message && r.message.name) {
-                    frm.set_value('to_warehouse', r.message.name);
-                } else {
-                    // Try alternative naming convention
-                    frappe.db.get_value('Warehouse', 
-                        {
-                            'company': frm.doc.company,
-                            'warehouse_name': ['like', '%WIP%']
-                        }, 
-                        'name'
-                    ).then(r2 => {
-                        if (r2 && r2.message && r2.message.name) {
-                            frm.set_value('to_warehouse', r2.message.name);
-                        }
-                    });
+            // Search for WIP warehouse in the company using get_list for proper filtering
+            frappe.call({
+                method: 'frappe.client.get_list',
+                args: {
+                    doctype: 'Warehouse',
+                    filters: {
+                        'company': frm.doc.company,
+                        'warehouse_name': ['like', '%Work In Progress%'],
+                        'is_group': 0
+                    },
+                    fields: ['name'],
+                    limit_page_length: 1
+                },
+                async: false,
+                callback: function(r) {
+                    if (r.message && r.message.length > 0) {
+                        frm.set_value('to_warehouse', r.message[0].name);
+                    } else {
+                        // Try alternative WIP naming
+                        frappe.call({
+                            method: 'frappe.client.get_list',
+                            args: {
+                                doctype: 'Warehouse',
+                                filters: {
+                                    'company': frm.doc.company,
+                                    'warehouse_name': ['like', '%WIP%'],
+                                    'is_group': 0
+                                },
+                                fields: ['name'],
+                                limit_page_length: 1
+                            },
+                            async: false,
+                            callback: function(r2) {
+                                if (r2.message && r2.message.length > 0) {
+                                    frm.set_value('to_warehouse', r2.message[0].name);
+                                }
+                            }
+                        });
+                    }
                 }
             });
         }
@@ -269,6 +370,11 @@ frappe.ui.form.on("Asosiy panel", {
         }
         frm.set_value("sales_order_item", "");
         frm.set_value("finished_good", "");
+        // Clear items table when sales_order changes in production mode
+        if (frm.doc.operation_type === 'production') {
+            frm.clear_table('items');
+            frm.refresh_field('items');
+        }
     },
     sales_order_item(frm) {
         // Auto-fetch item_code from Sales Order Item using custom server function
@@ -282,10 +388,96 @@ frappe.ui.form.on("Asosiy panel", {
                     if (r.message) {
                         frm.set_value("finished_good", r.message);
                         frm.refresh_field("finished_good");
+                        
+                        // ========================================
+                        // PRODUCTION MODE: Auto-fetch materials and services
+                        // ========================================
+                        if (frm.doc.operation_type === 'production') {
+                            frm.trigger('fetch_production_data');
+                        }
                     }
                 }
             });
         }
+    },
+    fetch_production_data(frm) {
+        // Fetch WIP materials and service costs for Production Hub
+        if (!frm.doc.sales_order || !frm.doc.sales_order_item) {
+            // Silently return - will be called again when sales_order_item is selected
+            return;
+        }
+        
+        if (!frm.doc.from_warehouse) {
+            // Silently return - will be called again when from_warehouse is set
+            return;
+        }
+        
+        frappe.call({
+            method: "premierprint.premierprint.doctype.asosiy_panel.asosiy_panel.get_production_data",
+            args: {
+                sales_order: frm.doc.sales_order,
+                sales_order_item: frm.doc.sales_order_item,
+                wip_warehouse: frm.doc.from_warehouse,
+                finished_good: frm.doc.finished_good
+            },
+            freeze: true,
+            freeze_message: __('Fetching production data...'),
+            callback: function(r) {
+                if (r.message) {
+                    // Clear existing items table
+                    frm.clear_table('items');
+                    
+                    let materials = r.message.materials || [];
+                    let services = r.message.services || [];
+                    
+                    // Add WIP Materials (is_wip_item = 1)
+                    materials.forEach(mat => {
+                        frm.add_child('items', {
+                            item_code: mat.item_code,
+                            item_name: mat.item_name,
+                            qty: mat.qty,
+                            uom: mat.uom,
+                            rate: mat.rate,
+                            amount: mat.amount,
+                            is_stock_item: mat.is_stock_item,
+                            is_wip_item: 1  // Flag: This is a WIP material
+                        });
+                    });
+                    
+                    // Add Service Items (is_wip_item = 0)
+                    services.forEach(svc => {
+                        frm.add_child('items', {
+                            item_code: svc.item_code,
+                            item_name: svc.item_name,
+                            qty: svc.qty,
+                            uom: svc.uom,
+                            rate: svc.rate,
+                            amount: svc.amount,
+                            is_stock_item: svc.is_stock_item,
+                            is_wip_item: 0  // Flag: This is a service (not from WIP)
+                        });
+                    });
+                    
+                    frm.refresh_field('items');
+                    frm.trigger('calculate_totals');
+                    
+                    // User feedback
+                    let msg = __('Loaded {0} materials and {1} services', [materials.length, services.length]);
+                    if (materials.length === 0 && services.length === 0) {
+                        frappe.msgprint({
+                            title: __('No Data Found'),
+                            message: __('No materials in WIP or services found for this Sales Order Item. Please create Rasxod/Usluga entries first.'),
+                            indicator: 'orange'
+                        });
+                    } else {
+                        frappe.show_alert({
+                            message: msg,
+                            indicator: 'green'
+                        }, 5);
+                    }
+                }
+            }
+        });
     },
     calculate_totals(frm) {
         let total_qty = 0;
@@ -309,6 +501,16 @@ frappe.ui.form.on('Asosiy panel', {
         // Target Company o'zgarsa, To Warehouse fieldini tozalaymiz va filtrni yangilaymiz
         frm.set_value('to_warehouse', '');
         frm.trigger('set_warehouse_filters');
+    },
+
+    from_warehouse: function (frm) {
+        // From Warehouse o'zgarganda production mode uchun fetch qilish
+        if (frm.doc.operation_type === 'production' && frm.doc.from_warehouse) {
+            // Try to fetch production data if sales_order_item is already selected
+            if (frm.doc.sales_order_item) {
+                frm.trigger('fetch_production_data');
+            }
+        }
     },
 
     company: function (frm) {
