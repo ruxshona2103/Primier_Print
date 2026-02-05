@@ -99,6 +99,8 @@ class Asosiypanel(Document):
             self.log_service_cost()
         elif self.operation_type == 'production':
             self.create_aggregated_production_entry()
+        elif self.operation_type == 'purchase_receipt':
+            self.create_purchase_receipt()
 
     def create_rasxod_material_transfer(self):
         """Create Stock Entry (Material Transfer) for rasxod_po_zakasu operation.
@@ -116,9 +118,11 @@ class Asosiypanel(Document):
         se.from_warehouse = self.from_warehouse
         se.to_warehouse = self.to_warehouse
         
-        # Link to Sales Order for aggregation tracking
+        # Link to Sales Order for aggregation tracking (using custom fields)
         if self.sales_order:
-            se.sales_order = self.sales_order
+            se.custom_sales_order = self.sales_order
+        if self.sales_order_item:
+            se.custom_sales_order_item = self.sales_order_item
         
         # Add supplier reference to remarks if provided
         if self.supplier:
@@ -187,28 +191,34 @@ class Asosiypanel(Document):
     def create_aggregated_production_entry(self):
         """Create Stock Entry (Repack) for production operation - The Aggregator.
         
-        This is the core of the Unified Production Hub. It:
-        1. Finds all materials in WIP warehouse linked to this Sales Order Item
-        2. Finds all service costs from submitted usluga_po_zakasu records
-        3. Creates a Repack Stock Entry that:
-           - Consumes materials from WIP
-           - Adds service costs to additional_costs
-           - Produces the finished good
+        This is the core of the Unified Production Hub. It uses items from the table:
+        - Items with is_wip_item=1 → Consumption rows (materials from WIP)
+        - Items with is_wip_item=0 AND is_stock_item=0 → Additional costs (services)
+        - Finished good → Production row
+        
+        The items table is auto-populated by frontend when sales_order_item is selected.
         """
-        # Step 1: Find materials in WIP warehouse for this Sales Order
-        wip_materials = self._get_wip_materials_for_production()
+        # Validate items table
+        if not self.items or len(self.items) == 0:
+            frappe.throw(
+                _("No items found in the table. Please select Sales Order Item to auto-fetch materials and services."),
+                title=_("No Items")
+            )
+        
+        # Separate WIP materials from services using is_wip_item flag
+        wip_materials = [item for item in self.items if item.is_wip_item]
+        service_items = [item for item in self.items if not item.is_wip_item and not item.is_stock_item]
         
         if not wip_materials:
             frappe.throw(
-                _("No materials found in WIP warehouse for Sales Order {0}. Please create 'Rasxod po zakasu' entries first.").format(self.sales_order),
-                title=_("No Materials Found")
+                _("No WIP materials found. Please ensure 'Rasxod po zakasu' entries exist for this Sales Order."),
+                title=_("No Materials")
             )
         
-        # Step 2: Find all service costs for this Sales Order Item
-        service_costs = self._get_service_costs_for_production()
-        total_service_cost = sum(sc.get('total_amount', 0) for sc in service_costs)
+        # Calculate total service cost
+        total_service_cost = sum((item.amount or 0) for item in service_items)
         
-        # Step 3: Create the Repack Stock Entry
+        # Create the Repack Stock Entry
         se = frappe.new_doc('Stock Entry')
         se.stock_entry_type = 'Repack'
         se.purpose = 'Repack'
@@ -226,18 +236,19 @@ class Asosiypanel(Document):
                 self.sales_order, supplier_name, self.name
             )
         
-        # Add consumption rows (materials from WIP)
-        for material in wip_materials:
+        # Add consumption rows (WIP materials - is_wip_item=1)
+        for item in wip_materials:
+            uom = item.uom or frappe.db.get_value("Item", item.item_code, "stock_uom")
             se.append('items', {
-                'item_code': material.get('item_code'),
-                'item_name': material.get('item_name'),
-                'qty': material.get('qty'),
-                'uom': material.get('uom') or frappe.db.get_value("Item", material.get('item_code'), "stock_uom"),
+                'item_code': item.item_code,
+                'item_name': item.item_name,
+                'qty': item.qty,
+                'uom': uom,
                 's_warehouse': self.from_warehouse,  # WIP warehouse
                 't_warehouse': None  # CRITICAL: Must be None for consumption
             })
         
-        # Add service costs to additional_costs table
+        # Add service costs to additional_costs table (is_wip_item=0, is_stock_item=0)
         if total_service_cost > 0:
             expense_account = frappe.db.get_value("Company", self.company, "stock_adjustment_account")
             if not expense_account:
@@ -245,7 +256,10 @@ class Asosiypanel(Document):
             
             se.append('additional_costs', {
                 'expense_account': expense_account,
-                'description': _("Service Costs from Usluga po zakasu (Total: {0} entries)").format(len(service_costs)),
+                'description': _("Service Costs from Usluga po zakasu ({0} items, Total: {1})").format(
+                    len(service_items),
+                    frappe.format_value(total_service_cost, {'fieldtype': 'Currency'})
+                ),
                 'amount': total_service_cost
             })
         
@@ -731,3 +745,151 @@ def get_item_details_from_so_item(so_item):
     # frappe.db.get_value bypasses permissions by default when called from whitelisted function
     item_code = frappe.db.get_value("Sales Order Item", so_item, "item_code")
     return item_code
+
+
+@frappe.whitelist()
+def get_production_data(sales_order, sales_order_item, wip_warehouse, finished_good=None):
+    """Fetch materials from WIP and service costs for Production auto-fill.
+    
+    This function aggregates:
+    1. Materials in WIP warehouse - from rasxod_po_zakasu Stock Entries
+    2. Service costs - from usluga_po_zakasu Asosiy Panel records
+    
+    Args:
+        sales_order: Sales Order name
+        sales_order_item: Sales Order Item name
+        wip_warehouse: WIP Warehouse to fetch materials from
+        finished_good: (Optional) Finished Good item code for filtering services
+        
+    Returns:
+        dict: {
+            'materials': [...],   # WIP materials with is_wip_item=1
+            'services': [...],    # Service items with is_wip_item=0
+            'total_material_cost': float,
+            'total_service_cost': float
+        }
+    """
+    if not sales_order or not sales_order_item:
+        frappe.throw(_("Sales Order and Sales Order Item are required"))
+    
+    # DEBUG: Log input parameters
+    frappe.log_error(
+        f"get_production_data called:\n"
+        f"sales_order: {sales_order}\n"
+        f"sales_order_item: {sales_order_item}\n"
+        f"wip_warehouse: {wip_warehouse}\n"
+        f"finished_good: {finished_good}",
+        "Production Data Debug - Input"
+    )
+    
+    # ========================================
+    # PART 1: Fetch Materials from WIP Warehouse
+    # ========================================
+    # Find Stock Entry Items transferred to WIP via rasxod_po_zakasu
+    # Using frappe.get_all for better site context handling
+    
+    # First get all submitted Stock Entries for this Sales Order with Material Transfer
+    # Using custom_sales_order field (custom field added to Stock Entry)
+    stock_entries = frappe.get_all(
+        'Stock Entry',
+        filters={
+            'docstatus': 1,
+            'custom_sales_order': sales_order,
+            'purpose': 'Material Transfer'
+        },
+        fields=['name']
+    )
+    
+    # DEBUG: Log stock entries found
+    frappe.log_error(
+        f"Stock Entries found: {len(stock_entries)}\n"
+        f"Entries: {[se.name for se in stock_entries]}",
+        "Production Data Debug - Stock Entries"
+    )
+    
+    # Get items from these stock entries that were transferred to WIP warehouse
+    materials = []
+    material_map = {}  # For aggregating same items
+    
+    for se in stock_entries:
+        items = frappe.get_all(
+            'Stock Entry Detail',
+            filters={
+                'parent': se.name,
+                't_warehouse': wip_warehouse
+            },
+            fields=['item_code', 'item_name', 'qty', 'uom', 'valuation_rate']
+        )
+        
+        for item in items:
+            key = (item.item_code, item.uom)
+            if key in material_map:
+                # Aggregate quantity and average rate
+                existing = material_map[key]
+                total_qty = existing['qty'] + item.qty
+                # Weighted average rate
+                existing['rate'] = ((existing['qty'] * existing['rate']) + (item.qty * (item.valuation_rate or 0))) / total_qty if total_qty else 0
+                existing['qty'] = total_qty
+            else:
+                material_map[key] = {
+                    'item_code': item.item_code,
+                    'item_name': item.item_name,
+                    'qty': item.qty,
+                    'uom': item.uom,
+                    'rate': item.valuation_rate or 0,
+                    'is_stock_item': 1,
+                    'is_wip_item': 1
+                }
+    
+    materials = list(material_map.values())
+    
+    # Calculate total material cost
+    total_material_cost = 0
+    for mat in materials:
+        mat['amount'] = (mat.get('qty') or 0) * (mat.get('rate') or 0)
+        total_material_cost += mat['amount']
+    
+    # ========================================
+    # PART 2: Fetch Service Costs from usluga_po_zakasu
+    # ========================================
+    # Build filters for service records
+    service_filters = {
+        'docstatus': 1,
+        'operation_type': 'usluga_po_zakasu',
+        'sales_order': sales_order,
+        'sales_order_item': sales_order_item
+    }
+    
+    if finished_good:
+        service_filters['finished_good'] = finished_good
+    
+    # Get all usluga_po_zakasu records
+    service_records = frappe.get_all(
+        'Asosiy panel',
+        filters=service_filters,
+        fields=['name']
+    )
+    
+    # Get service items from child tables
+    services = []
+    total_service_cost = 0
+    
+    for sr in service_records:
+        service_items = frappe.get_all(
+            'Asosiy panel item',
+            filters={'parent': sr.name},
+            fields=['item_code', 'item_name', 'qty', 'uom', 'rate', 'amount']
+        )
+        for si in service_items:
+            si['is_stock_item'] = 0
+            si['is_wip_item'] = 0  # Service items are NOT WIP items
+            si['source_record'] = sr.name
+            services.append(si)
+            total_service_cost += si.get('amount') or 0
+    
+    return {
+        'materials': materials,
+        'services': services,
+        'total_material_cost': total_material_cost,
+        'total_service_cost': total_service_cost
+    }
