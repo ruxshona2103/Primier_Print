@@ -122,9 +122,10 @@ def _handle_transport_lcv_creation(doc):
 
 	CRITICAL STEPS:
 	1. Validate transport cost exists
-	2. Convert transport cost to company currency (using lcv_utils)
-	3. Get PR list
-	4. Call transport_lcv.create_transport_lcv with converted amount
+	2. Get transport currency from custom_lcv_currency (NOT doc.currency)
+	3. Convert transport cost to company currency if needed
+	4. Get PR list
+	5. Call transport_lcv.create_transport_lcv with converted amount
 
 	Args:
 		doc: Purchase Invoice document
@@ -156,8 +157,20 @@ def _handle_transport_lcv_creation(doc):
 		)
 		return
 
-	# Get currencies and exchange rate
-	transport_currency = doc.currency  # Usually same as PI currency
+	# ============================================================
+	# ✅ FIX: Get transport currency from custom_lcv_currency
+	# ============================================================
+	transport_currency = doc.get("custom_lcv_currency")
+
+	if not transport_currency:
+		frappe.msgprint(
+			_("Transport Currency (custom_lcv_currency) is required to create Transport LCV"),
+			indicator="orange",
+			alert=True
+		)
+		return
+
+	# Get exchange rate
 	lcv_exchange_rate = flt(doc.get("custom_lcv_exchange_rate"))
 
 	if lcv_exchange_rate <= 0:
@@ -168,16 +181,34 @@ def _handle_transport_lcv_creation(doc):
 		)
 		return
 
-	# CRITICAL: Convert transport cost to company currency
-	# This is where we prevent the "Multiplier Bug"
+	# Get company currency
 	company_currency = frappe.get_cached_value("Company", doc.company, "default_currency")
 
-	transport_amount_company = convert_to_company_currency(
-		amount=transport_cost,
-		from_currency=transport_currency,
-		to_currency=company_currency,
-		conversion_rate=lcv_exchange_rate
-	)
+	# ============================================================
+	# ✅ FIX: Convert transport cost based on custom_lcv_currency
+	# ============================================================
+	if transport_currency == company_currency:
+		# Transport already in company currency (e.g., UZS → UZS)
+		# No conversion needed
+		transport_amount_company = transport_cost
+
+		frappe.logger().debug(
+			f"Transport LCV: No conversion needed. "
+			f"Amount: {transport_cost} {transport_currency}"
+		)
+	else:
+		# Transport needs conversion (e.g., UZS → USD or USD → UZS)
+		transport_amount_company = convert_to_company_currency(
+			amount=transport_cost,
+			from_currency=transport_currency,
+			to_currency=company_currency,
+			conversion_rate=lcv_exchange_rate
+		)
+
+		frappe.logger().debug(
+			f"Transport LCV: Converted {transport_cost} {transport_currency} → "
+			f"{transport_amount_company} {company_currency} (Rate: {lcv_exchange_rate})"
+		)
 
 	# Create Transport LCV
 	lcv_name = create_transport_lcv(
@@ -185,7 +216,7 @@ def _handle_transport_lcv_creation(doc):
 		pr_list=pr_list,
 		transport_amount=transport_amount_company,  # Already converted
 		original_amount=transport_cost,
-		original_currency=transport_currency,
+		original_currency=transport_currency,  # ✅ From custom_lcv_currency
 		exchange_rate=lcv_exchange_rate
 	)
 
