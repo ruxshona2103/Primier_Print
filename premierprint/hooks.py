@@ -252,7 +252,6 @@ doctype_js = {
 	"Purchase Invoice": "public/js/purchase_invoice.js",
 	"Item": "public/js/item.js",
 	"Payment Entry": "public/js/payment_entry.js",
-	"Stock Entry": "public/js/stock_entry.js"
 }
 patches = [
     # ... eski patchlar
