@@ -1,6 +1,7 @@
 import frappe
 from frappe.model.document import Document
 from frappe import _
+from frappe.utils import nowdate
 
 class Asosiypanel(Document):
     def validate(self):
@@ -36,10 +37,50 @@ class Asosiypanel(Document):
         if self.operation_type in ['production', 'rasxod_po_zakasu', 'usluga_po_zakasu']:
             if not self.sales_order:
                 frappe.throw(_("Sales Order is required for this operation type"))
+
+        if self.operation_type == "material_request":
+            self._validate_material_request()
+
+        if self.operation_type == "purchase_receipt":
+            self._validate_purchase_receipt()
         
         # Inter-Company Price List validation for delivery_note
         if self.operation_type == 'delivery_note' and self.customer:
             self._validate_inter_company_price_list()
+
+    def _validate_material_request(self):
+        if not self.from_warehouse:
+            frappe.throw(_("From Warehouse (Requesting Warehouse) is required for Material Request"))
+        if not self.items or len(self.items) == 0:
+            frappe.throw(_("Items table is empty. Please add at least one item."))
+
+        for row in self.items:
+            if not row.item_code:
+                frappe.throw(_("Item Code is required in items table"))
+            if not frappe.db.exists("Item", row.item_code):
+                frappe.throw(_("Item {0} does not exist in Item master").format(row.item_code))
+            if not row.qty or row.qty <= 0:
+                frappe.throw(_("Qty must be greater than 0 for Item {0}").format(row.item_code))
+
+    def _validate_purchase_receipt(self):
+        if not self.supplier:
+            frappe.throw(_("Supplier is required for Purchase Receipt"))
+        if not self.items or len(self.items) == 0:
+            frappe.throw(_("Items table is empty. Please add at least one item."))
+
+        for row in self.items:
+            if not row.item_code:
+                frappe.throw(_("Item Code is required in items table"))
+            if not frappe.db.exists("Item", row.item_code):
+                frappe.throw(_("Item {0} does not exist in Item master").format(row.item_code))
+            if not row.qty or row.qty <= 0:
+                frappe.throw(_("Qty must be greater than 0 for Item {0}").format(row.item_code))
+
+            is_stock_item = frappe.db.get_value("Item", row.item_code, "is_stock_item")
+            if is_stock_item:
+                row_warehouse = getattr(row, "warehouse", None) or self.from_warehouse
+                if not row_warehouse:
+                    frappe.throw(_("Warehouse is required for stock Item {0}").format(row.item_code))
 
     def _validate_service_items(self):
         """Validate that all items in usluga_po_zakasu are service items (non-stock)."""
@@ -89,7 +130,7 @@ class Asosiypanel(Document):
             self.create_stock_entry('Material Transfer')
         elif self.operation_type == 'material_issue':
             self.create_stock_entry('Material Issue')
-        elif self.operation_type == 'purchase_request':
+        elif self.operation_type == 'material_request':
             self.create_material_request()
         elif self.operation_type == 'service_sale':
             self.create_sales_invoice()
@@ -100,7 +141,7 @@ class Asosiypanel(Document):
         elif self.operation_type == 'production':
             self.create_aggregated_production_entry()
         elif self.operation_type == 'purchase_receipt':
-            self.create_purchase_receipt()
+            self.make_purchase_receipt()
 
     def create_rasxod_material_transfer(self):
         """Create Stock Entry (Material Transfer) for rasxod_po_zakasu operation.
@@ -613,44 +654,108 @@ class Asosiypanel(Document):
         ))
 
     def create_material_request(self):
-        mr = frappe.new_doc('Material Request')
-        mr.material_request_type = 'Purchase'
-        mr.company = self.company
-        mr.transaction_date = self.posting_date
-        
-        # Set default supplier if provided (for RFQ/PO generation)
-        # Note: Material Request doesn't have a direct supplier field,
-        # but we can add it to remarks for reference
-        if self.supplier:
-            supplier_name = frappe.db.get_value("Supplier", self.supplier, "supplier_name") or self.supplier
-            mr.custom_remarks = _("Preferred Supplier: {0}").format(supplier_name)
-        
-        for item in self.items:
-            item_dict = {
-                'item_code': item.item_code,
-                'item_name': item.item_name,
-                'qty': item.qty,
-                'uom': item.uom,
-                'rate': item.rate,
-                'warehouse': self.from_warehouse,
-                'schedule_date': self.payment_due_date or frappe.utils.nowdate()
-            }
-            mr.append('items', item_dict)
-            
-        mr.flags.ignore_permissions = True
-        mr.insert()
-        mr.submit()
-        
-        # Include supplier in success message if provided
-        supplier_msg = ""
-        if self.supplier:
-            supplier_name = frappe.db.get_value("Supplier", self.supplier, "supplier_name") or self.supplier
-            supplier_msg = _(" (Preferred Supplier: {0})").format(supplier_name)
-        
-        self.add_comment('Info', _('Material Request {0} created{1}').format(
-            f'<a href="/app/material-request/{mr.name}">{mr.name}</a>',
-            supplier_msg
-        ))
+        """Create and submit ERPNext Material Request for material_request."""
+        self._validate_material_request()
+
+        try:
+            mr_doc = frappe.new_doc("Material Request")
+            mr_doc.material_request_type = "Purchase"
+            mr_doc.transaction_date = self.posting_date
+            mr_doc.company = self.company
+
+            # Minimal audit trail
+            if hasattr(mr_doc, "remarks"):
+                mr_doc.remarks = _("Created from Asosiy panel {0}").format(self.name)
+
+            schedule_date = self.posting_date or nowdate()
+
+            for row in self.items:
+                mr_doc.append(
+                    "items",
+                    {
+                        "item_code": row.item_code,
+                        "qty": row.qty,
+                        "uom": row.uom,
+                        "warehouse": self.from_warehouse,
+                        "schedule_date": schedule_date,
+                    },
+                )
+
+            mr_doc.insert(ignore_permissions=True)
+            mr_doc.submit()
+
+            mr_link = f"<a href='/app/material-request/{mr_doc.name}'>{mr_doc.name}</a>"
+            frappe.msgprint(
+                _("Material Request {0} created and submitted").format(mr_link),
+                indicator="green",
+                alert=True,
+            )
+
+            self.add_comment("Info", _("Material Request {0} created").format(mr_link))
+
+            try:
+                ap_link = f"<a href='/app/asosiy-panel/{self.name}'>{self.name}</a>"
+                mr_doc.add_comment("Info", _("Created from Asosiy panel {0}").format(ap_link))
+            except Exception:
+                pass
+
+        except Exception:
+            frappe.log_error(frappe.get_traceback(), _("Asosiy panel → Material Request failed"))
+            frappe.throw(_("Failed to create Material Request. Please check Error Log."))
+
+    def make_purchase_receipt(self):
+        """Create and submit ERPNext Purchase Receipt for purchase_receipt."""
+        self._validate_purchase_receipt()
+
+        try:
+            pr_doc = frappe.new_doc("Purchase Receipt")
+            pr_doc.supplier = self.supplier
+            pr_doc.company = self.company
+            pr_doc.posting_date = self.posting_date
+
+            if hasattr(pr_doc, "currency") and self.currency:
+                pr_doc.currency = self.currency
+
+            # Map price list if relevant in your setup (optional field)
+            if hasattr(pr_doc, "buying_price_list") and self.price_list:
+                pr_doc.buying_price_list = self.price_list
+
+            if hasattr(pr_doc, "set_warehouse") and self.from_warehouse:
+                pr_doc.set_warehouse = self.from_warehouse
+
+            for row in self.items:
+                pr_doc.append(
+                    "items",
+                    {
+                        "item_code": row.item_code,
+                        "qty": row.qty,
+                        "uom": row.uom,
+                        "rate": getattr(row, "rate", None),
+                        "warehouse": self.from_warehouse,
+                    },
+                )
+
+            pr_doc.insert(ignore_permissions=True)
+            pr_doc.submit()
+
+            pr_link = f"<a href='/app/purchase-receipt/{pr_doc.name}'>{pr_doc.name}</a>"
+            frappe.msgprint(
+                _("Purchase Receipt {0} created and submitted").format(pr_link),
+                indicator="green",
+                alert=True,
+            )
+
+            self.add_comment("Info", _("Purchase Receipt {0} created").format(pr_link))
+
+            try:
+                ap_link = f"<a href='/app/asosiy-panel/{self.name}'>{self.name}</a>"
+                pr_doc.add_comment("Info", _("Created from Asosiy panel {0}").format(ap_link))
+            except Exception:
+                pass
+
+        except Exception:
+            frappe.log_error(frappe.get_traceback(), _("Asosiy panel → Purchase Receipt failed"))
+            frappe.throw(_("Failed to create Purchase Receipt. Please check Error Log."))
         
     def create_sales_invoice(self):
         si = frappe.new_doc('Sales Invoice')

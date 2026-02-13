@@ -7,7 +7,6 @@
  "field_order": [
   "asosiy_malumotlar_section",
   "operation_type",
-  "purpose",
   "posting_date",
   "column_break_rlsq",
   "company",
@@ -43,7 +42,7 @@
  "fields": [
   {
    "fieldname": "company",
-   "fieldtype": "Link",
+     "fieldtype": "Link",
    "label": "Company ",
    "options": "Company"
   },
@@ -79,11 +78,12 @@
    "fieldname": "operation_type",
    "fieldtype": "Select",
    "label": "Operation Type",
-   "options": "delivery_note\nmaterial_transfer\nmaterial_issue\npurchase_request\nrasxod_po_zakasu\nusluga_po_zakasu\nproduction"
+   "options": "delivery_note\nmaterial_transfer\nmaterial_issue\nmaterial_request\npurchase_receipt\nrasxod_po_zakasu\nusluga_po_zakasu\nproduction"
   },
   {
    "fieldname": "purpose",
    "fieldtype": "Data",
+    "hidden": 1,
    "label": "Purpose"
   },
   {
@@ -237,7 +237,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-02-05 15:42:18.008197",
+ "modified": "2026-02-13 17:21:27.324416",
  "modified_by": "Administrator",
  "module": "premierprint",
  "name": "Asosiy panel",
