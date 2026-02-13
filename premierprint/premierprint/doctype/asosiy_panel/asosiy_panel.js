@@ -88,11 +88,18 @@ frappe.ui.form.on("Asosiy panel", {
         const fields_to_toggle = [
             'customer', 'currency', 'price_list', 'supplier',
             'from_warehouse', 'to_warehouse', 'target_warehouse', 'target_company',
-            'purpose', 'finished_good', 'production_qty',
+            'finished_good', 'production_qty',
             'sales_order', 'sales_order_item'
         ];
         frm.toggle_display(fields_to_toggle, false);
         frm.toggle_reqd(fields_to_toggle, false);
+
+        // Reset label back to default for non-purchase_receipt
+        frm.set_df_property('from_warehouse', 'label', __('From Warehouse'));
+
+        // Reset mandatory flags (explicitly via df_property as requested)
+        frm.set_df_property('supplier', 'reqd', 0);
+        frm.set_df_property('from_warehouse', 'reqd', 0);
 
         if (frm.doc.operation_type) {
             // ============================================================
@@ -123,9 +130,9 @@ frappe.ui.form.on("Asosiy panel", {
             }
 
             // ============================================================
-            // SUPPLIER LOGIC - For production, usluga_po_zakasu, purchase_request
+            // SUPPLIER LOGIC - For production, usluga_po_zakasu
             // ============================================================
-            if (['production', 'usluga_po_zakasu', 'purchase_request'].includes(frm.doc.operation_type)) {
+            if (['production', 'usluga_po_zakasu'].includes(frm.doc.operation_type)) {
                 frm.toggle_display('supplier', true);
                 // Supplier is optional (not mandatory) - can be used for reference
                 frm.toggle_reqd('supplier', false);
@@ -149,11 +156,31 @@ frappe.ui.form.on("Asosiy panel", {
             }
 
             // ============================================================
-            // PURCHASE REQUEST LOGIC
+            // MATERIAL REQUEST LOGIC
             // ============================================================
-            if (frm.doc.operation_type === 'purchase_request') {
+            if (frm.doc.operation_type === 'material_request') {
                 frm.toggle_display('from_warehouse', true);
                 frm.toggle_reqd('from_warehouse', true);
+                // Ensure items table is visible
+                frm.toggle_display('items', true);
+            }
+
+            // ============================================================
+            // PURCHASE RECEIPT LOGIC
+            // ============================================================
+            if (frm.doc.operation_type === 'purchase_receipt') {
+                // Visibility
+                frm.toggle_display(['supplier', 'from_warehouse', 'currency', 'items'], true);
+
+                // Explicitly keep price_list hidden for purchase_receipt
+                frm.toggle_display('price_list', false);
+
+                // Dynamic labeling
+                frm.set_df_property('from_warehouse', 'label', __('Accepted Warehouse'));
+
+                // Mandatory fields (explicitly via df_property as requested)
+                frm.set_df_property('supplier', 'reqd', 1);
+                frm.set_df_property('from_warehouse', 'reqd', 1);
             }
 
             // ============================================================
