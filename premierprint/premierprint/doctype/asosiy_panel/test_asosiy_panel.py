@@ -5,5 +5,5 @@
 from frappe.tests.utils import FrappeTestCase
 
 
-class TestAsosiypanel(FrappeTestCase):
+class TestAsosiypanel(FrappeTestCase):		
 	pass

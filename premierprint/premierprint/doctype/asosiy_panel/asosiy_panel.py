@@ -1,13 +1,25 @@
 import frappe
 from frappe.model.document import Document
 from frappe import _
-from frappe.utils import nowdate
+from frappe.utils import nowdate, flt
+
+# Operation Type Mapping (Russian → DocType Purpose)
+TYPE_MAP = {
+    "Запрос материалов": "Material Request",
+    "Приход на склад": "Purchase Receipt",
+    "Списание материалов": "Material Issue",
+    "Перемещения": "Material Transfer",
+    "Отгрузка товаров": "Delivery Note",
+    "Расход по заказу": "Rasxod Material Transfer",
+    "Услуги по заказу": "Service Cost Log",
+    "Производство": "Production Repack",
+}
 
 class Asosiypanel(Document):
     def validate(self):
         """Validate document before saving."""
         # Validations for production operations
-        if self.operation_type == 'production':
+        if self.operation_type == 'Производство':
             if not self.finished_good:
                 frappe.throw(_("Finished Good is required for Production"))
             if not self.production_qty or self.production_qty <= 0:
@@ -18,7 +30,7 @@ class Asosiypanel(Document):
                 frappe.throw(_("To Warehouse (Finished Goods Store) is required for Production"))
         
         # Validations for usluga_po_zakasu (service logging)
-        if self.operation_type == 'usluga_po_zakasu':
+        if self.operation_type == 'Услуги по заказу':
             if not self.finished_good:
                 frappe.throw(_("Finished Good is required for Service Order"))
             if not self.production_qty or self.production_qty <= 0:
@@ -27,25 +39,25 @@ class Asosiypanel(Document):
             self._validate_service_items()
         
         # Validations for rasxod_po_zakasu (material transfer to WIP)
-        if self.operation_type == 'rasxod_po_zakasu':
+        if self.operation_type == 'Расход по заказу':
             if not self.from_warehouse:
                 frappe.throw(_("From Warehouse (Main Store) is required for Rasxod"))
             if not self.to_warehouse:
                 frappe.throw(_("To Warehouse (WIP) is required for Rasxod"))
         
         # Sales Order is required for all 3 production-related operations
-        if self.operation_type in ['production', 'rasxod_po_zakasu', 'usluga_po_zakasu']:
+        if self.operation_type in ['Производство', 'Расход по заказу', 'Услуги по заказу']:
             if not self.sales_order:
                 frappe.throw(_("Sales Order is required for this operation type"))
 
-        if self.operation_type == "material_request":
+        if self.operation_type == "Запрос материалов":
             self._validate_material_request()
 
-        if self.operation_type == "purchase_receipt":
+        if self.operation_type == "Приход на склад":
             self._validate_purchase_receipt()
         
         # Inter-Company Price List validation for delivery_note
-        if self.operation_type == 'delivery_note' and self.customer:
+        if self.operation_type == 'Отгрузка товаров' and self.customer:
             self._validate_inter_company_price_list()
 
     def _validate_material_request(self):
@@ -124,23 +136,23 @@ class Asosiypanel(Document):
 
     def on_submit(self):
         """Handle document submission based on operation type."""
-        if self.operation_type == 'delivery_note':
+        if self.operation_type == 'Отгрузка товаров':
             self.create_delivery_note()
-        elif self.operation_type == 'material_transfer':
+        elif self.operation_type == 'Перемещения':
             self.create_stock_entry('Material Transfer')
-        elif self.operation_type == 'material_issue':
+        elif self.operation_type == 'Списание материалов':
             self.create_stock_entry('Material Issue')
-        elif self.operation_type == 'material_request':
+        elif self.operation_type == 'Запрос материалов':
             self.create_material_request()
         elif self.operation_type == 'service_sale':
             self.create_sales_invoice()
-        elif self.operation_type == 'rasxod_po_zakasu':
+        elif self.operation_type == 'Расход по заказу':
             self.create_rasxod_material_transfer()
-        elif self.operation_type == 'usluga_po_zakasu':
+        elif self.operation_type == 'Услуги по заказу':
             self.log_service_cost()
-        elif self.operation_type == 'production':
+        elif self.operation_type == 'Производство':
             self.create_aggregated_production_entry()
-        elif self.operation_type == 'purchase_receipt':
+        elif self.operation_type == 'Приход на склад':
             self.make_purchase_receipt()
 
     def create_rasxod_material_transfer(self):
@@ -385,7 +397,7 @@ class Asosiypanel(Document):
         # Build filter based on sales_order_item if available
         filters = {
             'docstatus': 1,
-            'operation_type': 'usluga_po_zakasu',
+            'operation_type': 'Услуги по заказу',
             'sales_order': self.sales_order
         }
         
@@ -998,3 +1010,39 @@ def get_production_data(sales_order, sales_order_item, wip_warehouse, finished_g
         'total_material_cost': total_material_cost,
         'total_service_cost': total_service_cost
     }
+
+
+@frappe.whitelist()
+def get_any_available_price(item_code, preferred_price_list, currency=None):
+    """Get item price with fallback: preferred -> Standard Buying -> Standard Selling.
+
+    Returns dict with 'rate' and 'source' (which price list the rate came from).
+    """
+    fallback_lists = [preferred_price_list, "Standard Buying", "Standard Selling"]
+    # Remove duplicates while preserving order
+    seen = set()
+    price_lists = []
+    for pl in fallback_lists:
+        if pl and pl not in seen:
+            seen.add(pl)
+            price_lists.append(pl)
+
+    for pl in price_lists:
+        filters = {"item_code": item_code, "price_list": pl}
+        if currency:
+            filters["currency"] = currency
+        rate = frappe.db.get_value("Item Price", filters, "price_list_rate")
+        if rate and flt(rate) > 0:
+            return {"rate": flt(rate), "source": pl}
+
+    # Try again without currency filter as last resort
+    if currency:
+        for pl in price_lists:
+            rate = frappe.db.get_value("Item Price", {
+                "item_code": item_code,
+                "price_list": pl,
+            }, "price_list_rate")
+            if rate and flt(rate) > 0:
+                return {"rate": flt(rate), "source": pl}
+
+    return {"rate": 0, "source": None}
