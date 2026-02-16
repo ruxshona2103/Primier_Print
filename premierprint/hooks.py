@@ -70,16 +70,19 @@ doc_events = {
     "Sales Order": {
         "validate": "premierprint.utils.sales_order.set_naming_series"
     },
-    "Sales Invoice": {
-        "on_submit": "premierprint.api.sales_invoice.create_inter_company_purchase_invoice"
+    "Delivery Note": {
+        "on_submit": "premierprint.utils.invoicing.on_delivery_note_submit"
     },
     "Purchase Invoice": {
         "validate": "premierprint.services.lcv_trigger.validate",
-        "on_submit": "premierprint.services.lcv_trigger.on_submit",
+        "on_submit": [
+            "premierprint.services.lcv_trigger.on_submit",
+            "premierprint.utils.invoicing.on_purchase_invoice_submit"
+        ],
         "on_cancel": "premierprint.services.lcv_trigger.on_cancel"
     },
     "Purchase Receipt": {
-        "on_submit": "premierprint.utils.purchase_receipt.on_submit"
+        "on_submit": "premierprint.utils.invoicing.on_purchase_receipt_submit"
     }
 }
 
