@@ -10,9 +10,132 @@
 
 frappe.ui.form.on("Asosiy panel", {
     refresh(frm) {
+        console.log("🔄 UI Refresh started for operation:", frm.doc.operation_type || "NOT SET");
+        
         frm.trigger("setup_queries");
         frm.trigger("toggle_ui");
+        
+        // Render custom buttons
+        frm.trigger("render_custom_buttons");
+        
+        // Stock Ledger button - only shown for submitted documents
+        if (frm.doc.docstatus === 1) {
+            frm.add_custom_button(__('Stock Ledger'), function() {
+                frappe.route_options = {
+                    voucher_no: frm.doc.name,
+                    from_date: frm.doc.posting_date,
+                    to_date: frm.doc.posting_date,
+                    company: frm.doc.company
+                };
+                frappe.set_route("query-report", "Stock Ledger");
+            }, __("View"));
+        }
     },
+    
+    render_custom_buttons(frm) {
+        // Remove existing Purchase Order button to prevent duplicates
+        if (frm.custom_buttons && frm.custom_buttons["Get Items From"]) {
+            frm.remove_custom_button("Purchase Order", "Get Items From");
+        }
+        
+        // Robust string comparison with trim and type coercion
+        let operation_type = String(frm.doc.operation_type || "").trim();
+        let is_purchase_receipt = operation_type === "Приход на склад";
+        let is_draft = frm.doc.docstatus === 0;
+        
+        console.log("🔍 DEBUG - Operation Type:", operation_type);
+        console.log("🔍 DEBUG - Is Purchase Receipt:", is_purchase_receipt);
+        console.log("🔍 DEBUG - Is Draft:", is_draft);
+        
+        // "Get Items From" button for Purchase Receipt operation
+        if (is_purchase_receipt && is_draft) {
+            frm.add_custom_button(__('Purchase Order'), function() {
+                console.log("🔘 BUTTON CLICKED - Starting Purchase Order dialog");
+                
+                // Validation: Ensure Supplier and Company are selected
+                if (!frm.doc.supplier || !frm.doc.company) {
+                    frappe.msgprint({
+                        title: __('Ma\'lumot etishmayapti'),
+                        message: __('Iltimos, avval Kompaniya va Ta\'minotchini tanlang!'),
+                        indicator: 'red'
+                    });
+                    return;
+                }
+                
+                console.log("✅ Opening standard MultiSelectDialog");
+                console.log("📋 Filters:", {supplier: frm.doc.supplier, company: frm.doc.company});
+                
+                // Standard Frappe MultiSelectDialog - No custom query needed
+                new frappe.ui.form.MultiSelectDialog({
+                    doctype: "Purchase Order",
+                    target: frm,
+                    setters: {
+                        supplier: frm.doc.supplier || undefined,
+                        company: frm.doc.company || undefined
+                    },
+                    add_filters_group: 1,
+                    date_field: "transaction_date",
+                    get_query() {
+                        return {
+                            filters: {
+                                docstatus: 1,
+                                supplier: frm.doc.supplier,
+                                company: frm.doc.company,
+                                status: ["not in", ["Closed", "Delivered"]]
+                            }
+                        };
+                    },
+                    primary_action_label: __("Tanlash va Yuklash"),
+                    action(selections) {
+                        console.log("✅ Selections:", selections);
+                        
+                        if (selections && selections.length > 0) {
+                            frappe.call({
+                                method: "premierprint.premierprint.doctype.asosiy_panel.asosiy_panel.get_items_from_purchase_orders",
+                                args: {
+                                    source_names: selections
+                                },
+                                freeze: true,
+                                freeze_message: __("Tovarlar yuklanmoqda..."),
+                                callback: function(r) {
+                                    if (r.message && r.message.length > 0) {
+                                        frm.clear_table("items");
+                                        r.message.forEach(item => {
+                                            let row = frm.add_child("items");
+                                            Object.assign(row, item);
+                                        });
+                                        frm.refresh_field("items");
+                                        frm.trigger("calculate_totals");
+                                        frappe.show_alert({
+                                            message: __("{0} ta tovar muvaffaqiyatli yuklandi", [r.message.length]),
+                                            indicator: "green"
+                                        }, 5);
+                                    } else {
+                                        frappe.msgprint({
+                                            title: __('Ma\'lumot yo\'q'),
+                                            message: __('Tanlangan Purchase Order(lar)da qabul qilish uchun tovar topilmadi.'),
+                                            indicator: 'orange'
+                                        });
+                                    }
+                                },
+                                error: function(r) {
+                                    console.error("❌ Error:", r);
+                                    frappe.msgprint({
+                                        title: __('Xatolik'),
+                                        message: __('Tovarlarni yuklashda xatolik yuz berdi.'),
+                                        indicator: 'red'
+                                    });
+                                }
+                            });
+                        }
+                    }
+                });
+            }, __("Get Items From"));
+            
+            console.log("✅ Purchase Order button added");
+        }
+    },
+    
     company(frm) {
         frm.trigger("setup_queries");
         // Clear warehouses when company changes and reset defaults
@@ -29,6 +152,8 @@ frappe.ui.form.on("Asosiy panel", {
         // Clear all operation-specific fields when type changes
         frm.trigger("clear_operation_fields");
         frm.trigger("toggle_ui");
+        // Refresh form to update buttons based on new operation type
+        frm.refresh();
     },
     clear_operation_fields(frm) {
         // Reset all fields that depend on operation_type
@@ -94,6 +219,24 @@ frappe.ui.form.on("Asosiy panel", {
         });
     },
     toggle_ui(frm) {
+        console.log("🎨 UI Toggle started for:", frm.doc.operation_type || "EMPTY");
+        
+        // ========================================
+        // CRITICAL: ALWAYS show basic fields
+        // ========================================
+        if (frm.fields_dict['operation_type']) {
+            frm.toggle_display('operation_type', true);
+            frm.toggle_reqd('operation_type', true);
+        }
+        if (frm.fields_dict['company']) {
+            frm.toggle_display('company', true);
+            frm.toggle_reqd('company', true);
+        }
+        if (frm.fields_dict['posting_date']) {
+            frm.toggle_display('posting_date', true);
+            frm.toggle_reqd('posting_date', true);
+        }
+        
         // Default hide and un-require all optional fields
         const fields_to_toggle = [
             'customer', 'currency', 'price_list', 'supplier',
@@ -101,15 +244,38 @@ frappe.ui.form.on("Asosiy panel", {
             'finished_good', 'production_qty',
             'sales_order', 'sales_order_item'
         ];
-        frm.toggle_display(fields_to_toggle, false);
-        frm.toggle_reqd(fields_to_toggle, false);
+        
+        // Safely toggle only fields that exist
+        fields_to_toggle.forEach(field => {
+            if (frm.fields_dict[field]) {
+                frm.toggle_display(field, false);
+                frm.toggle_reqd(field, false);
+            }
+        });
 
         // Reset label back to default for non-purchase_receipt
-        frm.set_df_property('from_warehouse', 'label', __('From Warehouse'));
+        if (frm.fields_dict['from_warehouse']) {
+            frm.set_df_property('from_warehouse', 'label', __('From Warehouse'));
+        }
 
         // Reset mandatory flags (explicitly via df_property as requested)
-        frm.set_df_property('supplier', 'reqd', 0);
-        frm.set_df_property('from_warehouse', 'reqd', 0);
+        if (frm.fields_dict['supplier']) {
+            frm.set_df_property('supplier', 'reqd', 0);
+        }
+        if (frm.fields_dict['from_warehouse']) {
+            frm.set_df_property('from_warehouse', 'reqd', 0);
+        }
+
+        // ========================================
+        // SAFETY: If no operation_type, show items table at least
+        // ========================================
+        if (!frm.doc.operation_type) {
+            console.log("⚠️ No operation_type set - showing basic fields only");
+            if (frm.fields_dict['items']) {
+                frm.toggle_display('items', true);
+            }
+            return; // Exit early to prevent hiding everything
+        }
 
         if (frm.doc.operation_type) {
             // ============================================================
@@ -144,7 +310,13 @@ frappe.ui.form.on("Asosiy panel", {
             // ============================================================
             if (['Производство', 'Услуги по заказу'].includes(frm.doc.operation_type)) {
                 frm.toggle_display('supplier', true);
-                // Supplier is optional (not mandatory) - can be used for reference
+            }
+            
+            // Supplier is MANDATORY for service operations (Purchase Invoice creation)
+            if (frm.doc.operation_type === 'Услуги по заказу') {
+                frm.toggle_reqd('supplier', true);
+            } else if (frm.doc.operation_type === 'Производство') {
+                // Supplier is optional for production (for reference only)
                 frm.toggle_reqd('supplier', false);
             }
 
@@ -209,6 +381,19 @@ frappe.ui.form.on("Asosiy panel", {
                 frm.toggle_display(['from_warehouse', 'to_warehouse'], false);
                 frm.toggle_reqd(['from_warehouse', 'to_warehouse'], false);
                 frm.toggle_reqd(['finished_good', 'production_qty'], true);
+                
+                // Multi-Currency Support for Service Costs
+                frm.toggle_display(['currency', 'exchange_rate'], true);
+                frm.toggle_reqd('currency', true);
+                
+                // Set default currency to company's base currency if not set
+                if (!frm.doc.currency && frm.doc.company) {
+                    frappe.db.get_value('Company', frm.doc.company, 'default_currency', (r) => {
+                        if (r && r.default_currency) {
+                            frm.set_value('currency', r.default_currency);
+                        }
+                    });
+                }
             }
 
             // rasxod_po_zakasu - Material Transfer to WIP
@@ -438,8 +623,8 @@ frappe.ui.form.on("Asosiy panel", {
         }
     },
     fetch_production_data(frm) {
-        // Fetch WIP materials and service costs for Production Hub
-        if (!frm.doc.sales_order || !frm.doc.sales_order_item) {
+        // Fetch WIP materials and service costs for Production Hub using advanced aggregator
+        if (!frm.doc.sales_order_item) {
             // Silently return - will be called again when sales_order_item is selected
             return;
         }
@@ -450,26 +635,34 @@ frappe.ui.form.on("Asosiy panel", {
         }
 
         frappe.call({
-            method: "premierprint.premierprint.doctype.asosiy_panel.asosiy_panel.get_production_data",
+            method: "premierprint.premierprint.doctype.asosiy_panel.asosiy_panel.get_all_costs_for_production",
             args: {
-                sales_order: frm.doc.sales_order,
                 sales_order_item: frm.doc.sales_order_item,
                 wip_warehouse: frm.doc.from_warehouse,
-                finished_good: frm.doc.finished_good
+                company: frm.doc.company
             },
             freeze: true,
-            freeze_message: __('Fetching production data...'),
+            freeze_message: __('Fetching materials and service costs...'),
             callback: function (r) {
-                if (r.message) {
+                if (r.message && r.message.has_data) {
                     // Clear existing items table
                     frm.clear_table('items');
 
                     let materials = r.message.materials || [];
                     let services = r.message.services || [];
+                    let purchase_invoices = r.message.purchase_invoices || [];
 
-                    // Add WIP Materials (is_wip_item = 1)
+                    console.log('📦 Production Data Loaded:', {
+                        materials_count: materials.length,
+                        services_count: services.length,
+                        total_material_cost: r.message.total_material_cost,
+                        total_service_cost: r.message.total_service_cost,
+                        purchase_invoices: purchase_invoices
+                    });
+
+                    // Add WIP Materials (is_wip_material = 1)
                     materials.forEach(mat => {
-                        frm.add_child('items', {
+                        let row = frm.add_child('items', {
                             item_code: mat.item_code,
                             item_name: mat.item_name,
                             qty: mat.qty,
@@ -481,37 +674,66 @@ frappe.ui.form.on("Asosiy panel", {
                         });
                     });
 
-                    // Add Service Items (is_wip_item = 0)
+                    // Add Service Items (is_wip_material = 0) with visual hint
                     services.forEach(svc => {
-                        frm.add_child('items', {
+                        let row = frm.add_child('items', {
                             item_code: svc.item_code,
                             item_name: svc.item_name,
                             qty: svc.qty,
                             uom: svc.uom,
                             rate: svc.rate,
                             amount: svc.amount,
-                            is_stock_item: svc.is_stock_item,
-                            is_wip_item: 0  // Flag: This is a service (not from WIP)
+                            is_stock_item: 0,
+                            is_wip_item: 0  // Flag: This is a service cost
                         });
+                        
+                        // Visual hint: Service costs shown with description
+                        if (svc.description) {
+                            frappe.model.set_value(row.doctype, row.name, 'item_name', 
+                                '🔧 ' + svc.item_name + ' (Service)');
+                        }
                     });
 
                     frm.refresh_field('items');
                     frm.trigger('calculate_totals');
 
-                    // User feedback
-                    let msg = __('Loaded {0} materials and {1} services', [materials.length, services.length]);
-                    if (materials.length === 0 && services.length === 0) {
-                        frappe.msgprint({
-                            title: __('No Data Found'),
-                            message: __('No materials in WIP or services found for this Sales Order Item. Please create Rasxod/Usluga entries first.'),
-                            indicator: 'orange'
-                        });
-                    } else {
-                        frappe.show_alert({
-                            message: msg,
-                            indicator: 'green'
-                        }, 5);
+                    // User feedback with detailed summary
+                    let msg_parts = [];
+                    if (materials.length > 0) {
+                        msg_parts.push(__('Materials: {0} items ({1})', [
+                            materials.length,
+                            format_currency(r.message.total_material_cost, r.message.company_currency)
+                        ]));
                     }
+                    if (services.length > 0) {
+                        msg_parts.push(__('Services: {0} items ({1})', [
+                            services.length,
+                            format_currency(r.message.total_service_cost, r.message.company_currency)
+                        ]));
+                    }
+                    if (purchase_invoices.length > 0) {
+                        msg_parts.push(__('Purchase Invoices: {0}', [purchase_invoices.join(', ')]));
+                    }
+
+                    frappe.show_alert({
+                        message: msg_parts.join('<br>'),
+                        indicator: 'green'
+                    }, 5);
+
+                } else {
+                    // No data found
+                    frm.clear_table('items');
+                    frm.refresh_field('items');
+                    
+                    frappe.msgprint({
+                        title: __('No Data Found'),
+                        message: __('No materials in WIP or service costs found for Sales Order Item: {0}.<br><br>' +
+                                   'Please ensure:<br>' +
+                                   '1. "Расход по заказу" (Material Transfer to WIP) entries exist<br>' +
+                                   '2. "Услуги по заказу" (Service Cost) Purchase Invoices are submitted', 
+                                   [frm.doc.sales_order_item || 'Not Selected']),
+                        indicator: 'orange'
+                    });
                 }
             }
         });
@@ -527,7 +749,41 @@ frappe.ui.form.on("Asosiy panel", {
         }
     },
     currency(frm) {
-        // When currency changes, re-fetch rates for all items
+        // Auto-fetch exchange rate when currency changes
+        if (frm.doc.currency && frm.doc.company) {
+            // Get company's base currency
+            frappe.db.get_value('Company', frm.doc.company, 'default_currency', (r) => {
+                if (r && r.default_currency) {
+                    let company_currency = r.default_currency;
+                    
+                    // If transaction currency is same as company currency, exchange rate = 1
+                    if (frm.doc.currency === company_currency) {
+                        frm.set_value('exchange_rate', 1.0);
+                    } else {
+                        // Fetch current exchange rate from ERPNext
+                        frappe.call({
+                            method: 'erpnext.setup.utils.get_exchange_rate',
+                            args: {
+                                from_currency: frm.doc.currency,
+                                to_currency: company_currency,
+                                transaction_date: frm.doc.posting_date || frappe.datetime.get_today()
+                            },
+                            callback: function(r) {
+                                if (r.message) {
+                                    frm.set_value('exchange_rate', flt(r.message));
+                                    frappe.show_alert({
+                                        message: __('Kurs yangilandi: {0}', [flt(r.message, 6)]),
+                                        indicator: 'green'
+                                    }, 3);
+                                }
+                            }
+                        });
+                    }
+                }
+            });
+        }
+        
+        // When currency changes, re-fetch rates for all items (for operations with price_list)
         if (frm.doc.price_list && frm.doc.currency) {
             (frm.doc.items || []).forEach(row => {
                 if (row.item_code) {
@@ -536,6 +792,12 @@ frappe.ui.form.on("Asosiy panel", {
             });
         }
     },
+    
+    exchange_rate(frm) {
+        // Recalculate totals when exchange rate changes (for display purposes)
+        frm.trigger('calculate_totals');
+    },
+    
     calculate_totals(frm) {
         let total_qty = 0;
         let total_amount = 0;
@@ -545,6 +807,25 @@ frappe.ui.form.on("Asosiy panel", {
         });
         frm.set_value("total_quantity", total_qty);
         frm.set_value("total_amount", total_amount);
+        
+        // For multi-currency service operations, show base amount info
+        if (frm.doc.operation_type === 'Услуги по заказу' && frm.doc.currency && frm.doc.exchange_rate && frm.doc.company) {
+            frappe.db.get_value('Company', frm.doc.company, 'default_currency', (r) => {
+                if (r && r.default_currency && frm.doc.currency !== r.default_currency) {
+                    let base_total = total_amount * flt(frm.doc.exchange_rate);
+                    frm.set_df_property('total_amount', 'description', 
+                        __('Base Amount: {0} {1}', [
+                            format_currency(base_total, r.default_currency),
+                            r.default_currency
+                        ])
+                    );
+                } else {
+                    frm.set_df_property('total_amount', 'description', '');
+                }
+            });
+        } else {
+            frm.set_df_property('total_amount', 'description', '');
+        }
     }
 });
 
