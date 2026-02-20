@@ -34,7 +34,7 @@
   "link_filters": null,
   "mandatory_depends_on": null,
   "modified": "2026-01-23 10:47:23.279565",
-  "module": "premierprint",
+  "module": "PremierPrint",
   "name": "Landed Cost Voucher-custom_purchase_invoice",
   "no_copy": 0,
   "non_negative": 0,
