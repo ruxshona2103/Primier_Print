@@ -29,6 +29,7 @@
   "target_warehouse",
   "currency_section",
   "currency",
+  "exchange_rate",
   "price_list",
   "column_break_ppdk",
   "payment_due_date",
@@ -129,6 +130,13 @@
    "fieldtype": "Link",
    "label": "Currency",
    "options": "Currency"
+  },
+  {
+   "default": "1",
+   "fieldname": "exchange_rate",
+   "fieldtype": "Float",
+   "label": "Exchange Rate",
+   "precision": "9"
   },
   {
    "fieldname": "price_list",
