@@ -10,8 +10,12 @@ from frappe.utils import flt, getdate
 class Kassa(Document):
     def validate(self):
         self.set_default_company()
-        self.set_cash_account()
+        # kassa (visible) → cash_account (hidden) mirror — must run first
+        self.sync_kassa_to_cash_account()
+        # Currency derived from the GL account the cashier selected
         self.set_cash_account_currency()
+        # MoP is a computed derivative of cash_account, not a driver
+        self.derive_mop_from_account()
         self.set_party_currency()
         self.set_balance()
         self.validate_party()
@@ -36,10 +40,26 @@ class Kassa(Document):
     def on_cancel(self):
         self.cancel_linked_entries()
 
-    # ─── ACCOUNT CREATION METHODS (unchanged) ────────────────────────────────
+    # ─── ACCOUNT CREATION METHODS ────────────────────────────────────────────
 
     def create_payment_entry(self):
         payment_type = "Receive" if self.transaction_type == "Приход" else "Pay"
+        company_currency = frappe.get_cached_value("Company", self.company, "default_currency")
+
+        paid_from = self.get_paid_from_account(payment_type)
+        paid_to = self.get_paid_to_account(payment_type)
+
+        # Derive account currencies — used to set exchange rates ERPNext requires
+        # when any account's currency differs from the company's base currency.
+        paid_from_currency = (
+            frappe.get_cached_value("Account", paid_from, "account_currency")
+            if paid_from else company_currency
+        ) or company_currency
+        paid_to_currency = (
+            frappe.get_cached_value("Account", paid_to, "account_currency")
+            if paid_to else company_currency
+        ) or company_currency
+
         pe = frappe.new_doc("Payment Entry")
         pe.payment_type = payment_type
         pe.posting_date = self.date
@@ -47,10 +67,28 @@ class Kassa(Document):
         pe.mode_of_payment = self.mode_of_payment
         pe.party_type = self.party_type
         pe.party = self.party
-        pe.paid_from = self.get_paid_from_account(payment_type)
-        pe.paid_to = self.get_paid_to_account(payment_type)
+        pe.paid_from = paid_from
+        pe.paid_to = paid_to
+        pe.paid_from_account_currency = paid_from_currency
+        pe.paid_to_account_currency = paid_to_currency
+
+        # ERPNext mandates source/target exchange rates whenever an account's
+        # currency differs from the company currency. Set them explicitly so
+        # the Payment Entry validate() does not throw "is mandatory" errors.
+        if paid_from_currency != company_currency:
+            pe.source_exchange_rate = get_exchange_rate(paid_from_currency, company_currency, self.date) or 1
+        else:
+            pe.source_exchange_rate = 1
+
+        if paid_to_currency != company_currency:
+            pe.target_exchange_rate = get_exchange_rate(paid_to_currency, company_currency, self.date) or 1
+        else:
+            pe.target_exchange_rate = 1
+
+        # Recalculate amounts in company currency using the resolved exchange rates
         pe.paid_amount = flt(self.amount)
         pe.received_amount = flt(self.amount)
+
         pe.reference_no = self.name
         pe.reference_date = self.date
         pe.remarks = self.remarks or f"Payment for {self.name}"
@@ -251,13 +289,12 @@ class Kassa(Document):
             je_doc.cancel()
             frappe.msgprint(_("Journal Entry {0} отменен").format(je_name))
 
-    # ─── VALIDATION SETTERS ──────────────────────────────────────────────────
+    # ─── VALIDATION & SETTER METHODS ─────────────────────────────────────────
 
     def set_default_company(self):
         """
-        FIX: For Перемещения, resolve company from Global Defaults at validate time.
-        This is the server-side guard against the client-side race condition where
-        company may not yet be set when set_cash_account fires during JS execution.
+        For Перемещения, resolve company from Global Defaults at validate time.
+        Server-side guard against the client-side race condition.
         """
         if self.transaction_type == "Перемещения" and not self.company:
             default_company = frappe.db.get_single_value("Global Defaults", "default_company")
@@ -266,30 +303,54 @@ class Kassa(Document):
             else:
                 frappe.throw(_("Пожалуйста, установите компанию по умолчанию в настройках"))
 
-    def set_cash_account(self):
+    def sync_kassa_to_cash_account(self):
         """
-        FIX: Guard against null company before querying Mode of Payment Account.
-        Previously this would silently return None if company was not yet resolved,
-        leaving cash_account empty and causing a confusing submit-time error.
+        kassa (visible Link → Account) is the cashier's primary drawer selector.
+        cash_account (hidden Link → Account) is what all accounting methods use.
+        This method keeps them in sync so that accounting logic always has a valid account.
+
+        For Transfers/Conversions the destination kassa field (mode_of_payment_to)
+        drives cash_account_to via the same principle.
         """
-        if not self.company:
-            # company not resolved yet — set_default_company must run first in validate()
-            return
-
-        if self.mode_of_payment and self.company:
-            cash_account = get_cash_account(self.mode_of_payment, self.company)
-            if cash_account:
-                self.cash_account = cash_account
-
-        if self.mode_of_payment_to and self.company:
-            cash_account_to = get_cash_account(self.mode_of_payment_to, self.company)
-            if cash_account_to:
-                self.cash_account_to = cash_account_to
+        if self.kassa:
+            self.cash_account = self.kassa
 
     def set_cash_account_currency(self):
+        """Derive cash_account_currency directly from the selected cash_account's GL record."""
         if self.cash_account:
             self.cash_account_currency = frappe.get_cached_value(
                 "Account", self.cash_account, "account_currency")
+
+    def derive_mop_from_account(self):
+        """
+        ACCOUNT-FIRST: Mode of Payment is automatically derived from the selected
+        cash_account via a reverse lookup on Mode of Payment Account records.
+        The cashier selects an Account (drawer); MoP is computed, not chosen.
+
+        This eliminates the MoP→Account combinatorial mapping problem and
+        guarantees that mode_of_payment is always consistent with cash_account.
+        """
+        if self.cash_account and self.company:
+            mop = get_mop_for_account(self.cash_account, self.company)
+            if mop:
+                self.mode_of_payment = mop
+            else:
+                frappe.throw(
+                    _("Для счета «{0}» не найден способ оплаты. "
+                      f"Проверьте настройки Mode of Payment для компании «{1}».").format(
+                        self.cash_account, self.company)
+                )
+
+        if self.cash_account_to and self.company:
+            mop_to = get_mop_for_account(self.cash_account_to, self.company)
+            if mop_to:
+                self.mode_of_payment_to = mop_to
+            else:
+                frappe.throw(
+                    _("Для счета (куда) «{0}» не найден способ оплаты. "
+                      f"Проверьте настройки Mode of Payment для компании «{1}».").format(
+                        self.cash_account_to, self.company)
+                )
 
     def set_party_currency(self):
         if self.party and self.party_type in ["Customer", "Supplier"] and self.company:
@@ -319,24 +380,33 @@ class Kassa(Document):
 
     def validate_transfer(self):
         if self.transaction_type == "Перемещения":
+            if not self.cash_account_to:
+                frappe.throw(_("Пожалуйста, выберите счет кассы (куда)"))
+            if self.cash_account == self.cash_account_to:
+                frappe.throw(_("Счет источника и назначения должны отличаться"))
+            # MoP is now derived — validate the derived values for transfer constraints
             if not self.mode_of_payment_to:
-                frappe.throw(_("Пожалуйста, выберите способ оплаты (куда)"))
-            if self.mode_of_payment == self.mode_of_payment_to:
-                frappe.throw(_("Способ оплаты источника и назначения должны отличаться"))
+                frappe.throw(_("Не удалось определить способ оплаты для счета (куда)"))
             allowed_combinations = [("Cash UZS", "Bank (No ref)"), ("Bank (No ref)", "Cash UZS")]
             if (self.mode_of_payment, self.mode_of_payment_to) not in allowed_combinations:
                 frappe.throw(_("Для перемещения разрешены только комбинации: Cash UZS <-> Bank (No ref)"))
 
     def validate_conversion(self):
         if self.transaction_type == "Конвертация":
-            if not self.mode_of_payment_to:
-                frappe.throw(_("Пожалуйста, выберите способ оплаты (куда)"))
+            if not self.cash_account_to:
+                frappe.throw(_("Пожалуйста, выберите счет кассы (куда)"))
             if not self.exchange_rate or flt(self.exchange_rate) <= 0:
                 frappe.throw(_("Пожалуйста, укажите курс обмена"))
             if flt(self.debit_amount) <= 0:
                 frappe.throw(_("Пожалуйста, укажите сумму расхода"))
             if flt(self.credit_amount) <= 0:
                 frappe.throw(_("Пожалуйста, укажите сумму прихода"))
+            # Currency-aware validation: from and to accounts must have different currencies
+            from_currency = frappe.get_cached_value("Account", self.cash_account, "account_currency")
+            to_currency = frappe.get_cached_value("Account", self.cash_account_to, "account_currency")
+            if from_currency == to_currency:
+                frappe.throw(_("Для конвертации счета должны иметь разные валюты"))
+            # Guard: both must be USD/UZS-related (business rule)
             allowed_combinations = [
                 ("Cash UZS", "Cash USD"), ("Bank (No ref)", "Cash USD"),
                 ("Cash USD", "Cash UZS"), ("Cash USD", "Bank (No ref)")
@@ -368,7 +438,7 @@ class Kassa(Document):
         if self.cash_account_currency != self.party_currency:
             frappe.throw(
                 _("Валюта кассы ({0}) не совпадает с валютой контрагента ({1}). "
-                  "Выберите соответствующий способ оплаты.").format(
+                  f"Выберите соответствующий счет кассы.").format(
                     self.cash_account_currency, self.party_currency)
             )
 
@@ -376,7 +446,31 @@ class Kassa(Document):
 # ─── WHITELISTED API HELPERS ─────────────────────────────────────────────────
 
 @frappe.whitelist()
+def get_mop_for_account(account, company):
+    """
+    ACCOUNT-FIRST reverse lookup.
+    Given a GL Account and Company, returns the Mode of Payment whose
+    Mode of Payment Account mapping claims this account as its default.
+
+    This is the canonical source for MoP derivation in the Account-First flow.
+    The data already exists in Mode of Payment Account — this is a pure reverse query.
+    """
+    if not account or not company:
+        return None
+    return frappe.db.get_value(
+        "Mode of Payment Account",
+        {"default_account": account, "company": company},
+        "parent"
+    )
+
+
+@frappe.whitelist()
 def get_cash_account(mode_of_payment, company):
+    """
+    Legacy: MoP → Account lookup.
+    Retained for backward compatibility and any tooling that still uses it.
+    In the Account-First flow the canonical direction is the reverse: get_mop_for_account().
+    """
     if not mode_of_payment or not company:
         return None
     return frappe.db.get_value(
@@ -388,6 +482,7 @@ def get_cash_account(mode_of_payment, company):
 
 @frappe.whitelist()
 def get_cash_account_with_currency(mode_of_payment, company):
+    """Legacy: MoP → Account + Currency. Retained for backward compatibility."""
     if not mode_of_payment or not company:
         return {"account": None, "currency": None}
     account = frappe.db.get_value(
@@ -439,15 +534,12 @@ def get_account_balance(account, company):
 def get_kassa_accounts(doctype, txt, searchfield, start, page_len, filters):
     """
     SERVER-SIDE SECURITY BOUNDARY.
-    Filters are extracted here on the server — not trusted from the client payload.
-    Even if a malicious actor modifies the JS filter object, this function
-    enforces company scoping at the SQL level with no bypass path.
+    Filters the Account link field to show only legitimate Cash/Bank ledgers
+    for the given company. This function is the non-bypassable gate that
+    prevents cashiers from accidentally selecting non-cash GL Accounts.
 
-    WHY account_type IN ('Cash', 'Bank') and NOT root_type IN ('Asset', 'Liability'):
-    root_type = 'Asset' captures every asset leaf: Buildings, Accumulated Depreciation,
-    Fixed Assets, etc. — all of which are irrelevant to a cash register.
-    account_type is the precise ERPNext classification that identifies actual
-    cash drawers and bank ledgers. This is the correct discriminator.
+    account_type IN ('Cash', 'Bank') is more precise than root_type = 'Asset'
+    which would include Fixed Assets, Buildings, Depreciation accounts, etc.
     """
     company = filters.get("company") if filters else None
     if not company:
