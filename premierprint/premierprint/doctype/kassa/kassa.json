@@ -14,10 +14,10 @@
   "company",
   "kassa",
   "cash_account_currency",
-  "mode_of_payment_to",
   "cash_account",
-  "cash_account_to",
   "section_break_transfer",
+  "kassa_to",
+  "cash_account_to",
   "column_break_transfer",
   "balance_to",
   "section_break_conversion",
@@ -92,25 +92,34 @@
    "read_only": 1
   },
   {
-   "depends_on": "eval:doc.transaction_type !== '\u041f\u0435\u0440\u0435\u043c\u0435\u0449\u0435\u043d\u0438\u044f'",
    "fieldname": "company",
    "fieldtype": "Link",
    "label": "\u041a\u043e\u043c\u043f\u0430\u043d\u0438\u044f",
-   "mandatory_depends_on": "eval:doc.transaction_type !== '\u041f\u0435\u0440\u0435\u043c\u0435\u0449\u0435\u043d\u0438\u044f'",
+   "reqd": 1,
    "options": "Company"
   },
   {
-   "depends_on": "eval:in_list(['\u041f\u0435\u0440\u0435\u043c\u0435\u0449\u0435\u043d\u0438\u044f', '\u041a\u043e\u043d\u0432\u0435\u0440\u0442\u0430\u0446\u0438\u044f'], doc.transaction_type)",
-   "fieldname": "mode_of_payment_to",
+   "fieldname": "kassa",
    "fieldtype": "Link",
-   "label": "\u0421\u043f\u043e\u0441\u043e\u0431 \u043e\u043f\u043b\u0430\u0442\u044b (\u043a\u0443\u0434\u0430)",
-   "options": "Mode of Payment"
+   "label": "Kassa",
+   "options": "Account",
+   "reqd": 1,
+   "get_query": "function() { return { query: 'premierprint.kassa.kassa.get_kassa_accounts', filters: { company: frm.doc.company } }; }"
   },
   {
-   "depends_on": "eval:in_list(['\u041f\u0435\u0440\u0435\u043c\u0435\u0449\u0435\u043d\u0438\u044f', '\u041a\u043e\u043d\u0432\u0435\u0440\u0442\u0430\u0446\u0438\u044f'], doc.transaction_type) && doc.mode_of_payment_to",
+   "depends_on": "eval:in_list(['\u041f\u0435\u0440\u0435\u043c\u0435\u0449\u0435\u043d\u0438\u044f', '\u041a\u043e\u043d\u0432\u0435\u0440\u0442\u0430\u0446\u0438\u044f'], doc.transaction_type)",
    "fieldname": "section_break_transfer",
    "fieldtype": "Section Break",
-   "label": "\u041e\u0441\u0442\u0430\u0442\u043e\u043a (\u043a\u0443\u0434\u0430)"
+   "label": "\u041d\u0430\u0437\u043d\u0430\u0447\u0435\u043d\u0438\u0435"
+  },
+  {
+   "depends_on": "eval:in_list(['\u041f\u0435\u0440\u0435\u043c\u0435\u0449\u0435\u043d\u0438\u044f', '\u041a\u043e\u043d\u0432\u0435\u0440\u0442\u0430\u0446\u0438\u044f'], doc.transaction_type)",
+   "fieldname": "kassa_to",
+   "fieldtype": "Link",
+   "label": "Kassa (\u043a\u0443\u0434\u0430)",
+   "options": "Account",
+   "mandatory_depends_on": "eval:in_list(['\u041f\u0435\u0440\u0435\u043c\u0435\u0449\u0435\u043d\u0438\u044f', '\u041a\u043e\u043d\u0432\u0435\u0440\u0442\u0430\u0446\u0438\u044f'], doc.transaction_type)",
+   "get_query": "function() { return { query: 'premierprint.kassa.kassa.get_kassa_accounts_to', filters: { company: frm.doc.company } }; }"
   },
   {
    "fieldname": "cash_account_to",
@@ -122,10 +131,10 @@
   },
   {
    "fieldname": "column_break_transfer",
-   "fieldtype": "Column Break",
-   "hidden": 1
+   "fieldtype": "Column Break"
   },
   {
+   "depends_on": "eval:in_list(['\u041f\u0435\u0440\u0435\u043c\u0435\u0449\u0435\u043d\u0438\u044f', '\u041a\u043e\u043d\u0432\u0435\u0440\u0442\u0430\u0446\u0438\u044f'], doc.transaction_type) && doc.kassa_to",
    "fieldname": "balance_to",
    "fieldtype": "Currency",
    "label": "\u041e\u0441\u0442\u0430\u0442\u043e\u043a (\u043a\u0443\u0434\u0430)",
@@ -241,7 +250,7 @@
   {
    "fieldname": "section_break_details",
    "fieldtype": "Section Break",
-   "label": "\u0414\u043e\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044c\u043d\u043e"
+   "label": "\u0414\u043e\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044d\u043d\u043e"
   },
   {
    "fieldname": "remarks",
@@ -256,18 +265,12 @@
    "options": "Kassa",
    "print_hide": 1,
    "read_only": 1
-  },
-  {
-   "fieldname": "kassa",
-   "fieldtype": "Link",
-   "label": "Kassa",
-   "options": "Account"
   }
  ],
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-02-21 16:02:26.994761",
+ "modified": "2026-02-23 08:02:40.969205",
  "modified_by": "Administrator",
  "module": "PremierPrint",
  "name": "Kassa",

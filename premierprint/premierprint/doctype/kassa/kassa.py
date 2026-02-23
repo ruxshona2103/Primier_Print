@@ -11,6 +11,7 @@ class Kassa(Document):
     def validate(self):
         self.set_default_company()
         # kassa (visible) → cash_account (hidden) mirror — must run first
+        # kassa_to (visible) → cash_account_to (hidden) mirror — same pattern
         self.sync_kassa_to_cash_account()
         # Currency derived from the GL account the cashier selected
         self.set_cash_account_currency()
@@ -26,7 +27,7 @@ class Kassa(Document):
 
     def on_submit(self):
         if self.transaction_type in ["Приход", "Расход"]:
-            if self.party_type in ["Customer", "Supplier", "Employee"]:
+            if self.party_type in ["Customer", "Supplier", "Employee", "Shareholder"]:
                 self.create_payment_entry()
             elif self.party_type == "Дивиденд":
                 self.create_dividend_journal_entry()
@@ -49,8 +50,6 @@ class Kassa(Document):
         paid_from = self.get_paid_from_account(payment_type)
         paid_to = self.get_paid_to_account(payment_type)
 
-        # Derive account currencies — used to set exchange rates ERPNext requires
-        # when any account's currency differs from the company's base currency.
         paid_from_currency = (
             frappe.get_cached_value("Account", paid_from, "account_currency")
             if paid_from else company_currency
@@ -72,9 +71,6 @@ class Kassa(Document):
         pe.paid_from_account_currency = paid_from_currency
         pe.paid_to_account_currency = paid_to_currency
 
-        # ERPNext mandates source/target exchange rates whenever an account's
-        # currency differs from the company currency. Set them explicitly so
-        # the Payment Entry validate() does not throw "is mandatory" errors.
         if paid_from_currency != company_currency:
             pe.source_exchange_rate = get_exchange_rate(paid_from_currency, company_currency, self.date) or 1
         else:
@@ -85,10 +81,8 @@ class Kassa(Document):
         else:
             pe.target_exchange_rate = 1
 
-        # Recalculate amounts in company currency using the resolved exchange rates
         pe.paid_amount = flt(self.amount)
         pe.received_amount = flt(self.amount)
-
         pe.reference_no = self.name
         pe.reference_date = self.date
         pe.remarks = self.remarks or f"Payment for {self.name}"
@@ -105,7 +99,7 @@ class Kassa(Document):
                 return frappe.get_cached_value("Company", self.company, "default_receivable_account")
             elif self.party_type == "Supplier":
                 return frappe.get_cached_value("Company", self.company, "default_payable_account")
-            elif self.party_type == "Employee":
+            elif self.party_type in ["Employee", "Shareholder"]:
                 return frappe.db.get_value("Account",
                     {"company": self.company, "account_type": "Payable", "is_group": 0}, "name")
         else:
@@ -119,7 +113,7 @@ class Kassa(Document):
                 return frappe.get_cached_value("Company", self.company, "default_receivable_account")
             elif self.party_type == "Supplier":
                 return frappe.get_cached_value("Company", self.company, "default_payable_account")
-            elif self.party_type == "Employee":
+            elif self.party_type in ["Employee", "Shareholder"]:
                 return frappe.db.get_value("Account",
                     {"company": self.company, "account_type": "Payable", "is_group": 0}, "name")
 
@@ -220,6 +214,10 @@ class Kassa(Document):
         ))
 
     def create_transfer_payment_entry(self):
+        """
+        Same-company Internal Transfer: Cash ↔ Bank within one company.
+        Payment Entry (Internal Transfer) requires both accounts in the same company.
+        """
         pe = frappe.new_doc("Payment Entry")
         pe.payment_type = "Internal Transfer"
         pe.posting_date = self.date
@@ -240,9 +238,32 @@ class Kassa(Document):
         ))
 
     def create_conversion_payment_entry(self):
+        """
+        Currency conversion between USD and UZS accounts.
+
+        exchange_rate field label = "Курс (USD к UZS)" = e.g. 12500
+        Meaning: 1 USD = 12500 UZS
+
+        ERPNext source/target exchange_rate semantics:
+            source_exchange_rate = how many company_currency units = 1 from_currency unit
+            target_exchange_rate = how many company_currency units = 1 to_currency unit
+        company_currency = USD
+
+        Case A: UZS → USD (from_currency=UZS, to_currency=USD)
+            source: 1 UZS = 1/12500 USD  → source_exchange_rate = 1/exchange_rate
+            target: 1 USD = 1 USD         → target_exchange_rate = 1
+
+        Case B: USD → UZS (from_currency=USD, to_currency=UZS)
+            source: 1 USD = 1 USD         → source_exchange_rate = 1
+            target: 1 UZS = 1/12500 USD  → target_exchange_rate = 1/exchange_rate
+        """
         from_currency = frappe.get_cached_value("Account", self.cash_account, "account_currency")
         to_currency = frappe.get_cached_value("Account", self.cash_account_to, "account_currency")
         company_currency = frappe.get_cached_value("Company", self.company, "default_currency")
+
+        exchange_rate = flt(self.exchange_rate)
+        if exchange_rate <= 0:
+            frappe.throw(_("Курс обмена должен быть больше нуля"))
 
         pe = frappe.new_doc("Payment Entry")
         pe.payment_type = "Internal Transfer"
@@ -254,15 +275,19 @@ class Kassa(Document):
         pe.paid_amount = flt(self.debit_amount)
         pe.received_amount = flt(self.credit_amount)
 
-        if from_currency != company_currency:
-            pe.source_exchange_rate = flt(1 / flt(self.exchange_rate), 9) if flt(self.exchange_rate) > 0 else 1
-        else:
+        # source_exchange_rate: 1 unit of from_currency = ? company_currency
+        if from_currency == company_currency:
             pe.source_exchange_rate = 1
-
-        if to_currency != company_currency:
-            pe.target_exchange_rate = flt(1 / flt(self.exchange_rate), 9) if flt(self.exchange_rate) > 0 else 1
         else:
+            # from_currency is UZS, company is USD → 1 UZS = 1/12500 USD
+            pe.source_exchange_rate = flt(1 / exchange_rate, 9)
+
+        # target_exchange_rate: 1 unit of to_currency = ? company_currency
+        if to_currency == company_currency:
             pe.target_exchange_rate = 1
+        else:
+            # to_currency is UZS, company is USD → 1 UZS = 1/12500 USD
+            pe.target_exchange_rate = flt(1 / exchange_rate, 9)
 
         pe.reference_no = self.name
         pe.reference_date = self.date
@@ -293,10 +318,10 @@ class Kassa(Document):
 
     def set_default_company(self):
         """
-        For Перемещения, resolve company from Global Defaults at validate time.
-        Server-side guard against the client-side race condition.
+        Resolve company from Global Defaults at validate time.
+        Server-side guard against client-side race conditions.
         """
-        if self.transaction_type == "Перемещения" and not self.company:
+        if not self.company:
             default_company = frappe.db.get_single_value("Global Defaults", "default_company")
             if default_company:
                 self.company = default_company
@@ -305,15 +330,22 @@ class Kassa(Document):
 
     def sync_kassa_to_cash_account(self):
         """
-        kassa (visible Link → Account) is the cashier's primary drawer selector.
+        kassa (visible Link → Account) is the cashier's primary source selector.
         cash_account (hidden Link → Account) is what all accounting methods use.
-        This method keeps them in sync so that accounting logic always has a valid account.
 
-        For Transfers/Conversions the destination kassa field (mode_of_payment_to)
-        drives cash_account_to via the same principle.
+        kassa_to (visible) → cash_account_to (hidden): same pattern for destination.
+
+        This guarantees accounting logic always operates on validated account references,
+        while the UI presents a user-friendly account picker via kassa / kassa_to.
         """
         if self.kassa:
             self.cash_account = self.kassa
+
+        if self.transaction_type in ["Перемещения", "Конвертация"]:
+            if self.kassa_to:
+                self.cash_account_to = self.kassa_to
+            else:
+                self.cash_account_to = None
 
     def set_cash_account_currency(self):
         """Derive cash_account_currency directly from the selected cash_account's GL record."""
@@ -325,10 +357,10 @@ class Kassa(Document):
         """
         ACCOUNT-FIRST: Mode of Payment is automatically derived from the selected
         cash_account via a reverse lookup on Mode of Payment Account records.
-        The cashier selects an Account (drawer); MoP is computed, not chosen.
+        The cashier selects an Account (kassa); MoP is computed, not chosen.
 
-        This eliminates the MoP→Account combinatorial mapping problem and
-        guarantees that mode_of_payment is always consistent with cash_account.
+        Only source MoP is derived here. Destination account (kassa_to / cash_account_to)
+        drives no MoP field — it is used directly in accounting entries.
         """
         if self.cash_account and self.company:
             mop = get_mop_for_account(self.cash_account, self.company)
@@ -337,19 +369,8 @@ class Kassa(Document):
             else:
                 frappe.throw(
                     _("Для счета «{0}» не найден способ оплаты. "
-                      f"Проверьте настройки Mode of Payment для компании «{1}».").format(
+                      "Проверьте настройки Mode of Payment для компании «{1}».").format(
                         self.cash_account, self.company)
-                )
-
-        if self.cash_account_to and self.company:
-            mop_to = get_mop_for_account(self.cash_account_to, self.company)
-            if mop_to:
-                self.mode_of_payment_to = mop_to
-            else:
-                frappe.throw(
-                    _("Для счета (куда) «{0}» не найден способ оплаты. "
-                      f"Проверьте настройки Mode of Payment для компании «{1}».").format(
-                        self.cash_account_to, self.company)
                 )
 
     def set_party_currency(self):
@@ -360,7 +381,10 @@ class Kassa(Document):
         if self.cash_account:
             self.balance = get_account_balance(self.cash_account, self.company)
         if self.cash_account_to:
-            self.balance_to = get_account_balance(self.cash_account_to, self.company)
+            self.balance_to = get_account_balance(
+                self.cash_account_to,
+                frappe.get_cached_value("Account", self.cash_account_to, "company")
+            )
 
     def validate_party(self):
         if self.transaction_type in ["Приход", "Расход"]:
@@ -379,40 +403,83 @@ class Kassa(Document):
                 self.expense_account = None
 
     def validate_transfer(self):
-        if self.transaction_type == "Перемещения":
-            if not self.cash_account_to:
-                frappe.throw(_("Пожалуйста, выберите счет кассы (куда)"))
-            if self.cash_account == self.cash_account_to:
-                frappe.throw(_("Счет источника и назначения должны отличаться"))
-            # MoP is now derived — validate the derived values for transfer constraints
-            if not self.mode_of_payment_to:
-                frappe.throw(_("Не удалось определить способ оплаты для счета (куда)"))
-            allowed_combinations = [("Cash UZS", "Bank (No ref)"), ("Bank (No ref)", "Cash UZS")]
-            if (self.mode_of_payment, self.mode_of_payment_to) not in allowed_combinations:
-                frappe.throw(_("Для перемещения разрешены только комбинации: Cash UZS <-> Bank (No ref)"))
+        """
+        Перемещения rules (same company only for now):
+        - Source and destination must be different accounts.
+        - Source and destination must belong to the same company.
+        - Allowed direction: Cash ↔ Bank (not Cash ↔ Cash, not Bank ↔ Bank).
+          Rationale: Moving between two cash drawers or two bank accounts
+          has no operational meaning in this business model.
+        """
+        if self.transaction_type != "Перемещения":
+            return
+
+        if not self.cash_account_to:
+            frappe.throw(_("Пожалуйста, выберите счет кассы (куда)"))
+
+        if self.cash_account == self.cash_account_to:
+            frappe.throw(_("Счет источника и назначения должны отличаться"))
+
+        # Same-company constraint (cross-company deferred to Phase 2)
+        company_from = frappe.get_cached_value("Account", self.cash_account, "company")
+        company_to = frappe.get_cached_value("Account", self.cash_account_to, "company")
+        if company_from != company_to:
+            frappe.throw(
+                _("Перемещение между компаниями временно не поддерживается. "
+                  "Выберите счет в рамках одной компании.")
+            )
+
+        # Cash ↔ Bank directional constraint
+        type_from = frappe.get_cached_value("Account", self.cash_account, "account_type")
+        type_to = frappe.get_cached_value("Account", self.cash_account_to, "account_type")
+        allowed = (
+            (type_from == "Cash" and type_to == "Bank") or
+            (type_from == "Bank" and type_to == "Cash")
+        )
+        if not allowed:
+            frappe.throw(
+                _("Перемещение разрешено только между счетами типа Cash и Bank. "
+                  "Источник: {0}, Назначение: {1}").format(type_from, type_to)
+            )
 
     def validate_conversion(self):
-        if self.transaction_type == "Конвертация":
-            if not self.cash_account_to:
-                frappe.throw(_("Пожалуйста, выберите счет кассы (куда)"))
-            if not self.exchange_rate or flt(self.exchange_rate) <= 0:
-                frappe.throw(_("Пожалуйста, укажите курс обмена"))
-            if flt(self.debit_amount) <= 0:
-                frappe.throw(_("Пожалуйста, укажите сумму расхода"))
-            if flt(self.credit_amount) <= 0:
-                frappe.throw(_("Пожалуйста, укажите сумму прихода"))
-            # Currency-aware validation: from and to accounts must have different currencies
-            from_currency = frappe.get_cached_value("Account", self.cash_account, "account_currency")
-            to_currency = frappe.get_cached_value("Account", self.cash_account_to, "account_currency")
-            if from_currency == to_currency:
-                frappe.throw(_("Для конвертации счета должны иметь разные валюты"))
-            # Guard: both must be USD/UZS-related (business rule)
-            allowed_combinations = [
-                ("Cash UZS", "Cash USD"), ("Bank (No ref)", "Cash USD"),
-                ("Cash USD", "Cash UZS"), ("Cash USD", "Bank (No ref)")
-            ]
-            if (self.mode_of_payment, self.mode_of_payment_to) not in allowed_combinations:
-                frappe.throw(_("Для конвертации разрешены только комбинации: Cash UZS/Bank (No ref) <-> Cash USD"))
+        """
+        Конвертация rules:
+        - Source and destination must have different currencies (USD ↔ UZS).
+        - exchange_rate, debit_amount, credit_amount must be positive.
+        - Both accounts must be Cash or Bank type (enforced by get_kassa_accounts filter).
+        """
+        if self.transaction_type != "Конвертация":
+            return
+
+        if not self.cash_account_to:
+            frappe.throw(_("Пожалуйста, выберите счет кассы (куда)"))
+
+        if not self.exchange_rate or flt(self.exchange_rate) <= 0:
+            frappe.throw(_("Пожалуйста, укажите курс обмена"))
+
+        if flt(self.debit_amount) <= 0:
+            frappe.throw(_("Пожалуйста, укажите сумму расхода"))
+
+        if flt(self.credit_amount) <= 0:
+            frappe.throw(_("Пожалуйста, укажите сумму прихода"))
+
+        from_currency = frappe.get_cached_value("Account", self.cash_account, "account_currency")
+        to_currency = frappe.get_cached_value("Account", self.cash_account_to, "account_currency")
+
+        if from_currency == to_currency:
+            frappe.throw(
+                _("Для конвертации счета должны иметь разные валюты. "
+                  "Оба счета имеют валюту: {0}").format(from_currency)
+            )
+
+        # Guard: only USD ↔ UZS conversions are supported
+        allowed_pairs = [("USD", "UZS"), ("UZS", "USD")]
+        if (from_currency, to_currency) not in allowed_pairs:
+            frappe.throw(
+                _("Конвертация поддерживается только между USD и UZS. "
+                  "Выбрано: {0} → {1}").format(from_currency, to_currency)
+            )
 
     def validate_amount(self):
         if self.transaction_type == "Конвертация":
@@ -438,7 +505,7 @@ class Kassa(Document):
         if self.cash_account_currency != self.party_currency:
             frappe.throw(
                 _("Валюта кассы ({0}) не совпадает с валютой контрагента ({1}). "
-                  f"Выберите соответствующий счет кассы.").format(
+                  "Выберите соответствующий счет кассы.").format(
                     self.cash_account_currency, self.party_currency)
             )
 
@@ -451,9 +518,6 @@ def get_mop_for_account(account, company):
     ACCOUNT-FIRST reverse lookup.
     Given a GL Account and Company, returns the Mode of Payment whose
     Mode of Payment Account mapping claims this account as its default.
-
-    This is the canonical source for MoP derivation in the Account-First flow.
-    The data already exists in Mode of Payment Account — this is a pure reverse query.
     """
     if not account or not company:
         return None
@@ -466,11 +530,7 @@ def get_mop_for_account(account, company):
 
 @frappe.whitelist()
 def get_cash_account(mode_of_payment, company):
-    """
-    Legacy: MoP → Account lookup.
-    Retained for backward compatibility and any tooling that still uses it.
-    In the Account-First flow the canonical direction is the reverse: get_mop_for_account().
-    """
+    """Legacy: MoP → Account lookup. Retained for backward compatibility."""
     if not mode_of_payment or not company:
         return None
     return frappe.db.get_value(
@@ -533,13 +593,9 @@ def get_account_balance(account, company):
 @frappe.whitelist()
 def get_kassa_accounts(doctype, txt, searchfield, start, page_len, filters):
     """
-    SERVER-SIDE SECURITY BOUNDARY.
-    Filters the Account link field to show only legitimate Cash/Bank ledgers
-    for the given company. This function is the non-bypassable gate that
-    prevents cashiers from accidentally selecting non-cash GL Accounts.
-
-    account_type IN ('Cash', 'Bank') is more precise than root_type = 'Asset'
-    which would include Fixed Assets, Buildings, Depreciation accounts, etc.
+    SERVER-SIDE SECURITY BOUNDARY for source kassa field.
+    Returns only Cash/Bank ledgers for the given company.
+    Prevents cashiers from selecting non-cash GL Accounts.
     """
     company = filters.get("company") if filters else None
     if not company:
@@ -556,6 +612,44 @@ def get_kassa_accounts(doctype, txt, searchfield, start, page_len, filters):
         LIMIT  %(start)s, %(page_len)s
         """,
         {"company": company, "txt": f"%{txt}%", "start": start, "page_len": page_len},
+    )
+
+
+@frappe.whitelist()
+def get_kassa_accounts_to(doctype, txt, searchfield, start, page_len, filters):
+    """
+    kassa_to field query: Cash/Bank accounts across ALL companies.
+
+    For Перемещения (same company): results are further validated in
+    validate_transfer() which throws if company_from != company_to.
+
+    For Конвертация: same company required for Payment Entry (Internal Transfer).
+    Both constraints are enforced server-side at submit time, not at search time,
+    so the cashier can see all available accounts and pick the correct one.
+
+    Shows company name in results so cashier can distinguish accounts visually.
+    """
+    company_filter = filters.get("company") if filters else None
+    params = {"txt": f"%{txt}%", "start": start, "page_len": page_len}
+
+    if company_filter:
+        params["company"] = company_filter
+        company_clause = "AND company = %(company)s"
+    else:
+        company_clause = ""
+
+    return frappe.db.sql(
+        f"""
+        SELECT name, account_name, account_currency, company
+        FROM   `tabAccount`
+        WHERE  account_type IN ('Cash', 'Bank')
+          AND  is_group     = 0
+          {company_clause}
+          AND  (name LIKE %(txt)s OR account_name LIKE %(txt)s)
+        ORDER  BY company, account_type, name
+        LIMIT  %(start)s, %(page_len)s
+        """,
+        params,
     )
 
 
