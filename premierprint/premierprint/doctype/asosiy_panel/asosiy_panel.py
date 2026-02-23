@@ -1081,16 +1081,6 @@ def get_so_items(doctype, txt, searchfield, start, page_len, filters):
 
 @frappe.whitelist()
 def get_item_details_from_so_item(so_item):
-    """Fetch item_code from a Sales Order Item.
-    
-    This directly fetches from DB bypassing Permission Manager.
-    
-    Args:
-        so_item: Name of the Sales Order Item
-        
-    Returns:
-        str: item_code
-    """
     if not so_item:
         return None
     
@@ -1329,77 +1319,54 @@ def get_any_available_price(item_code, preferred_price_list, currency=None):
 
 @frappe.whitelist()
 def get_items_from_purchase_orders(source_names):
-    """Fetch items from selected Purchase Order(s) and map to Asosiy panel.
+    """Fetch ALL items from selected Purchase Order(s) for Asosiy panel.
     
-    Args:
-        source_names: A JSON string or list of Purchase Order names
-    
-    Returns:
-        list: List of item dictionaries formatted for Asosiy panel item child table
+    Returns every item regardless of received_qty or PO status.
+    This allows pulling items even from Completed Purchase Orders
+    (needed for 'Приход на склад' operation).
     """
     import json
     
-    try:
-        # Parse input
-        if isinstance(source_names, str):
-            source_names = json.loads(source_names)
-        
-        if not isinstance(source_names, list):
-            source_names = [source_names]
-        
-        if not source_names:
-            frappe.throw(_("No Purchase Orders selected"))
-        
-        items_to_add = []
-        
-        # Fetch items from all selected Purchase Orders
-        po_items = frappe.db.get_all(
-            "Purchase Order Item",
-            filters={
-                "parent": ["in", source_names],
-                "docstatus": 1
-            },
-            fields=[
-                "parent as purchase_order",
-                "name as purchase_order_item",
-                "item_code",
-                "item_name",
-                "description",
-                "qty",
-                "received_qty",
-                "uom",
-                "rate",
-                "stock_uom"
-            ],
-            order_by="parent, idx"
-        )
-        
-        for po_item in po_items:
-            # Calculate remaining quantity to be received
-            pending_qty = flt(po_item.get("qty", 0)) - flt(po_item.get("received_qty", 0))
-            
-            # Only add items with pending quantity
-            if pending_qty > 0:
-                # Get item stock status
-                is_stock_item = frappe.db.get_value("Item", po_item.get("item_code"), "is_stock_item")
-                
-                items_to_add.append({
-                    "item_code": po_item.get("item_code"),
-                    "item_name": po_item.get("item_name"),
-                    "qty": pending_qty,
-                    "uom": po_item.get("uom") or po_item.get("stock_uom"),
-                    "rate": flt(po_item.get("rate", 0)),
-                    "amount": flt(pending_qty) * flt(po_item.get("rate", 0)),
-                    "is_stock_item": is_stock_item or 0,
-                    "purchase_order": po_item.get("purchase_order"),
-                    "purchase_order_item": po_item.get("purchase_order_item")
-                })
-        
-        return items_to_add
-        
-    except Exception as e:
-        frappe.log_error(frappe.get_traceback(), _("Get Items From Purchase Order Failed"))
-        frappe.throw(_("Failed to fetch items from Purchase Orders: {0}").format(str(e)))
+    if isinstance(source_names, str):
+        source_names = json.loads(source_names)
+    
+    if not isinstance(source_names, list):
+        source_names = [source_names]
+    
+    if not source_names:
+        frappe.throw(_("No Purchase Orders selected"))
+    
+    po_items = frappe.db.sql("""
+        SELECT
+            poi.item_code,
+            poi.item_name,
+            poi.qty,
+            poi.uom,
+            poi.stock_uom,
+            poi.rate,
+            poi.parent  AS purchase_order,
+            poi.name    AS purchase_order_item
+        FROM `tabPurchase Order Item` poi
+        INNER JOIN `tabPurchase Order` po ON po.name = poi.parent
+        WHERE po.docstatus = 1
+          AND po.name IN %(names)s
+        ORDER BY poi.parent, poi.idx
+    """, {"names": source_names}, as_dict=True)
+    
+    items = []
+    for row in po_items:
+        items.append({
+            "item_code": row.item_code,
+            "item_name": row.item_name,
+            "qty": flt(row.qty),
+            "uom": row.uom or row.stock_uom,
+            "rate": flt(row.rate),
+            "amount": flt(row.qty) * flt(row.rate),
+            "purchase_order": row.purchase_order,
+            "purchase_order_item": row.purchase_order_item,
+        })
+    
+    return items
 
 
 @frappe.whitelist()
