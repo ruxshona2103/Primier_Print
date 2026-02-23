@@ -14,6 +14,7 @@ frappe.ui.form.on("Asosiy panel", {
         
         frm.trigger("setup_queries");
         frm.trigger("toggle_ui");
+        frm.trigger("set_warehouse_filters");
         
         // Render custom buttons
         frm.trigger("render_custom_buttons");
@@ -66,7 +67,7 @@ frappe.ui.form.on("Asosiy panel", {
                 console.log("📋 Filters:", {supplier: frm.doc.supplier, company: frm.doc.company});
                 
                 // Standard Frappe MultiSelectDialog - No custom query needed
-                new frappe.ui.form.MultiSelectDialog({
+                let d = new frappe.ui.form.MultiSelectDialog({
                     doctype: "Purchase Order",
                     target: frm,
                     setters: {
@@ -87,17 +88,21 @@ frappe.ui.form.on("Asosiy panel", {
                     },
                     primary_action_label: __("Tanlash va Yuklash"),
                     action(selections) {
+                        d.dialog.hide();
                         console.log("✅ Selections:", selections);
                         
                         if (selections && selections.length > 0) {
                             frappe.call({
                                 method: "premierprint.premierprint.doctype.asosiy_panel.asosiy_panel.get_items_from_purchase_orders",
                                 args: {
-                                    source_names: selections
+                                    source_names: JSON.stringify(selections)
                                 },
                                 freeze: true,
                                 freeze_message: __("Tovarlar yuklanmoqda..."),
                                 callback: function(r) {
+                                    console.log("📦 Server Response Raw:", r);
+                                    console.log("📦 Items received:", r.message);
+                                    
                                     if (r.message && r.message.length > 0) {
                                         frm.clear_table("items");
                                         r.message.forEach(item => {
@@ -113,7 +118,7 @@ frappe.ui.form.on("Asosiy panel", {
                                     } else {
                                         frappe.msgprint({
                                             title: __('Ma\'lumot yo\'q'),
-                                            message: __('Tanlangan Purchase Order(lar)da qabul qilish uchun tovar topilmadi.'),
+                                            message: __('Serverdan bo\'sh ro\'yxat keldi. Purchase Order statusini tekshiring. Selections: ') + JSON.stringify(selections),
                                             indicator: 'orange'
                                         });
                                     }
@@ -141,6 +146,7 @@ frappe.ui.form.on("Asosiy panel", {
         // Clear warehouses when company changes and reset defaults
         frm.set_value('from_warehouse', '');
         frm.set_value('to_warehouse', '');
+        frm.trigger('set_warehouse_filters');
         // Re-apply warehouse defaults based on operation type
         if (frm.doc.operation_type === 'Расход по заказу') {
             frm.trigger('set_wip_warehouse_default');
@@ -217,6 +223,41 @@ frappe.ui.form.on("Asosiy panel", {
                 frm.set_df_property("price_list", "read_only", 0);
             }
         });
+    },
+    target_company(frm) {
+        // Target Company o'zgarsa, To Warehouse fieldini tozalaymiz va filtrni yangilaymiz
+        frm.set_value('to_warehouse', '');
+        frm.trigger('set_warehouse_filters');
+    },
+    from_warehouse(frm) {
+        // From Warehouse o'zgarganda production mode uchun fetch qilish
+        if (frm.doc.operation_type === 'Производство' && frm.doc.from_warehouse) {
+            if (frm.doc.sales_order_item) {
+                frm.trigger('fetch_production_data');
+            }
+        }
+    },
+    set_warehouse_filters(frm) {
+        // "From Warehouse" filtrini o'rnatish (Asosiy Company bo'yicha)
+        frm.set_query('from_warehouse', function () {
+            return {
+                filters: {
+                    'company': frm.doc.company,
+                    'is_group': 0
+                }
+            };
+        });
+        // "To Warehouse" filtrini o'rnatish (Target Company bo'yicha)
+        if (frm.doc.target_company) {
+            frm.set_query('to_warehouse', function () {
+                return {
+                    filters: {
+                        'company': frm.doc.target_company,
+                        'is_group': 0
+                    }
+                };
+            });
+        }
     },
     toggle_ui(frm) {
         console.log("🎨 UI Toggle started for:", frm.doc.operation_type || "EMPTY");
@@ -829,58 +870,9 @@ frappe.ui.form.on("Asosiy panel", {
     }
 });
 
-frappe.ui.form.on('Asosiy panel', {
-    // Sahifa yuklanganda va Target Company o'zgarganda filtrni yangilaymiz
-    refresh: function (frm) {
-        frm.trigger('set_warehouse_filters');
-    },
-
-    target_company: function (frm) {
-        // Target Company o'zgarsa, To Warehouse fieldini tozalaymiz va filtrni yangilaymiz
-        frm.set_value('to_warehouse', '');
-        frm.trigger('set_warehouse_filters');
-    },
-
-    from_warehouse: function (frm) {
-        // From Warehouse o'zgarganda production mode uchun fetch qilish
-        if (frm.doc.operation_type === 'Производство' && frm.doc.from_warehouse) {
-            // Try to fetch production data if sales_order_item is already selected
-            if (frm.doc.sales_order_item) {
-                frm.trigger('fetch_production_data');
-            }
-        }
-    },
-
-    company: function (frm) {
-        // Asosiy Company o'zgarsa, From Warehouse filtrini yangilaymiz
-        frm.set_value('from_warehouse', '');
-        frm.trigger('set_warehouse_filters');
-    },
-
-    set_warehouse_filters: function (frm) {
-        // 1. "From Warehouse" filtrini o'rnatish (Asosiy Company bo'yicha)
-        frm.set_query('from_warehouse', function () {
-            return {
-                filters: {
-                    'company': frm.doc.company,
-                    'is_group': 0 // Guruh bo'lmagan, real omborlar chiqsin
-                }
-            };
-        });
-
-        // 2. "To Warehouse" filtrini o'rnatish (Target Company bo'yicha)
-        if (frm.doc.target_company) {
-            frm.set_query('to_warehouse', function () {
-                return {
-                    filters: {
-                        'company': frm.doc.target_company,
-                        'is_group': 0
-                    }
-                };
-            });
-        }
-    }
-});
+// NOTE: All 'Asosiy panel' handlers are in the SINGLE block above.
+// Do NOT add a second frappe.ui.form.on('Asosiy panel', {...}) here —
+// it would override the refresh/company/etc. handlers above and break the UI.
 
 // Child Table: Asosiy panel item
 frappe.ui.form.on('Asosiy panel item', {
