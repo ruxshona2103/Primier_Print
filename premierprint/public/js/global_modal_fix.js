@@ -1,4 +1,4 @@
-(function() {
+(function () {
     /**
      * Senior/Gold Solution:
      * 1. Window darajasida (Capture phase) barcha clicklarni ushlaymiz.
@@ -9,39 +9,44 @@
     const neutralizer = (e) => {
         // Link field dropdownlarini ignore qilish
         if (e.target.closest('.awesomplete') || e.target.closest('.link-field')) {
-            return; // Link field'ni ishlashiga ruxsat beramiz
+            return;
         }
 
         // Modal ichidagi linkni topamiz
-        const link = e.target.closest('.modal-body a');
+        const link = e.target.closest('.modal-body a[data-doctype], .modal-body a[href*="/"]');
 
         if (link) {
-            // Frappe Routerni to'xtatish uchun eng muhim qadamlar:
-            e.preventDefault();
-            e.stopImmediatePropagation(); // Boshqa barcha JS'larni (Frappe Router) to'xtatadi
-            e.stopPropagation();
+            console.log("Brutal Truth: Intercepting link:", link.innerText);
 
-            // Linkning navigatsiya atributlarini butunlay o'chirib tashlaymiz
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+
+            // Linkning navigatsiya atributlarini o'chirib tashlaymiz
             link.removeAttribute('href');
             link.removeAttribute('data-doctype');
             link.removeAttribute('data-name');
-            link.style.pointerEvents = 'none';
 
-            // Checkbox belgilanishi uchun linkning ota-elementiga (qatorga) click beramiz
-            const row = link.closest('.dt-row, .list-item');
+            // Select checkbox inside the row
+            const row = link.closest('.dt-row, .list-item, .grid-row');
             if (row) {
-                // Infinite loop bo'lmasligi uchun chetdan click beramiz
-                row.click();
+                const checkbox = row.querySelector('input[type="checkbox"]');
+                if (checkbox) {
+                    checkbox.click();
+                    console.log("Brutal Truth: Checkbox toggled.");
+                } else {
+                    row.click();
+                    console.log("Brutal Truth: Row clicked.");
+                }
             }
 
-            console.log("Brutal Truth: Link intercepted and neutralized at window level.");
             return false;
         }
     };
 
     // 'true' flagi bu Capture phase ekanligini bildiradi.
-    // Bu Frappe'ning ichki listenerlaridan oldin bizning kod ishga tushishini kafolatlaydi.
     window.addEventListener('click', neutralizer, true);
+    window.addEventListener('mousedown', neutralizer, true);
 
     // Vizual qism: Foydalanuvchi linkni link deb o'ylamasligi kerak
     const style = document.createElement('style');
@@ -49,9 +54,8 @@
         .modal-body a[data-doctype]:not(.awesomplete a):not(.link-field a),
         .modal-body a:not(.awesomplete a):not(.link-field a) {
             color: #212529 !important;
-            text-decoration: none !important;
+            text-decoration: underline !important;
             cursor: pointer !important;
-            pointer-events: none !important;
         }
         .modal-body .dt-row:hover, .modal-body .list-item:hover {
             background-color: #f8f9fa !important;

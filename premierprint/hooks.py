@@ -116,7 +116,7 @@ property_setters = [
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/premierprint/css/premierprint.css"
-# app_include_js = "/assets/premierprint/js/stock_entry_custom.js"  # Consolidated into doctype_js stock_entry.js
+app_include_js = "/assets/premierprint/js/global_modal_fix.js"
 
 # include js, css files in header of web template
 # web_include_css = "/assets/premierprint/css/premierprint.css"
