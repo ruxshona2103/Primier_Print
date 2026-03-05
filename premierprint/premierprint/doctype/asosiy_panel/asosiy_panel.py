@@ -192,6 +192,225 @@ class Asosiypanel(Document):
         elif self.operation_type == 'Приход на склад':
             self.make_purchase_receipt()
 
+    def _store_linked_doc(self, doctype, docname, secondary=False):
+        """Store linked document reference for cancellation tracking.
+        
+        Args:
+            doctype: DocType of the linked document
+            docname: Name of the linked document
+            secondary: If True, store in the secondary pair (for inter-company 2nd doc)
+        """
+        if secondary:
+            frappe.db.set_value(self.doctype, self.name, {
+                'linked_document_type_2': doctype,
+                'linked_document_name_2': docname
+            }, update_modified=False)
+        else:
+            frappe.db.set_value(self.doctype, self.name, {
+                'linked_document_type': doctype,
+                'linked_document_name': docname
+            }, update_modified=False)
+
+    def on_cancel(self):
+        """Recursive Cancellation Chain for Asosiy panel.
+        
+        When this document is cancelled, ALL background documents created by it
+        must be automatically and safely cancelled to prevent "Ghost Entries"
+        in the Stock Ledger and General Ledger.
+        
+        Strategy:
+        1. Cancel explicitly tracked linked documents (reverse order: secondary → primary)
+        2. Deep scan all possible DocTypes for any documents referencing self.name
+        3. Cancel all found submitted documents with proper error handling
+        4. Report results to the user
+        """
+        cancelled_docs = []
+
+        # =====================================================================
+        # PHASE 1: Cancel explicitly tracked linked documents
+        # Order: secondary first (e.g., inter-company PR), then primary (e.g., DN)
+        # =====================================================================
+        if self.linked_document_type_2 and self.linked_document_name_2:
+            self._cancel_linked_doc(
+                self.linked_document_type_2,
+                self.linked_document_name_2,
+                cancelled_docs
+            )
+
+        if self.linked_document_type and self.linked_document_name:
+            self._cancel_linked_doc(
+                self.linked_document_type,
+                self.linked_document_name,
+                cancelled_docs
+            )
+
+        # =====================================================================
+        # PHASE 2: Deep scan — find ALL remaining linked documents by reference
+        # This catches documents that may have been created outside the
+        # _store_linked_doc tracking, preventing "Ghost Entries"
+        # =====================================================================
+        # Collect names already processed to avoid double-cancellation
+        already_processed = set()
+        for dt, dn in cancelled_docs:
+            # Strip "(o'chirildi)" suffix from deleted drafts
+            clean_name = dn.replace(" (o'chirildi)", "")
+            already_processed.add((dt, clean_name))
+
+        # Also add the tracked names even if cancellation failed above
+        if self.linked_document_type and self.linked_document_name:
+            already_processed.add((self.linked_document_type, self.linked_document_name))
+        if self.linked_document_type_2 and self.linked_document_name_2:
+            already_processed.add((self.linked_document_type_2, self.linked_document_name_2))
+
+        # DocTypes to scan for orphaned references
+        SCAN_DOCTYPES = [
+            "Stock Entry",
+            "Purchase Receipt",
+            "Delivery Note",
+            "Sales Invoice",
+            "Purchase Invoice",
+            "Material Request",
+        ]
+
+        for doctype in SCAN_DOCTYPES:
+            found_docs = self._find_linked_docs_by_reference(doctype)
+
+            for doc_name in found_docs:
+                if (doctype, doc_name) in already_processed:
+                    continue
+                already_processed.add((doctype, doc_name))
+                self._cancel_linked_doc(doctype, doc_name, cancelled_docs)
+
+        # =====================================================================
+        # PHASE 3: User feedback and audit trail
+        # =====================================================================
+        if cancelled_docs:
+            doc_links = []
+            for dt, dn in cancelled_docs:
+                route = dt.lower().replace(' ', '-')
+                clean_name = dn.replace(" (o'chirildi)", "")
+                doc_links.append(
+                    f"<a href='/app/{route}/{clean_name}'>{dt}: {dn}</a>"
+                )
+            frappe.msgprint(
+                _("✅ Bekor qilingan hujjatlar:<br>{0}").format('<br>'.join(doc_links)),
+                indicator='orange',
+                alert=True
+            )
+        else:
+            frappe.msgprint(
+                _("ℹ️ Bog'langan hujjatlar topilmadi. Faqat Asosiy panel bekor qilindi."),
+                indicator='blue',
+                alert=True
+            )
+
+        self.add_comment('Info', _('Asosiy panel bekor qilindi. Bog\'langan hujjatlar: {0}').format(
+            ', '.join([f'{dt} {dn}' for dt, dn in cancelled_docs]) or _('Yo\'q')
+        ))
+
+    def _find_linked_docs_by_reference(self, doctype):
+        """Search for documents of a given DocType that reference this Asosiy panel.
+        
+        Searches across multiple reference fields:
+        - remarks: Contains 'Asosiy Panel: <name>'
+        - custom_asosiy_panel_ref: Direct link field (if exists)
+        
+        Args:
+            doctype: The DocType to search in (e.g., 'Stock Entry')
+            
+        Returns:
+            list: List of document names (docstatus == 1) linked to this panel
+        """
+        found = []
+
+        # ------------------------------------------------------------------
+        # Strategy 1: Search by `remarks` field (all creation methods embed
+        #             "Asosiy Panel: {self.name}" in remarks)
+        # ------------------------------------------------------------------
+        meta = frappe.get_meta(doctype)
+        if meta.has_field("remarks"):
+            docs_by_remarks = frappe.get_all(
+                doctype,
+                filters={
+                    "docstatus": 1,
+                    "remarks": ["like", f"%{self.name}%"]
+                },
+                pluck="name",
+                ignore_permissions=True
+            )
+            found.extend(docs_by_remarks)
+
+        # ------------------------------------------------------------------
+        # Strategy 2: Search by `custom_asosiy_panel_ref` (direct link field)
+        # ------------------------------------------------------------------
+        if meta.has_field("custom_asosiy_panel_ref"):
+            docs_by_ref = frappe.get_all(
+                doctype,
+                filters={
+                    "docstatus": 1,
+                    "custom_asosiy_panel_ref": self.name
+                },
+                pluck="name",
+                ignore_permissions=True
+            )
+            found.extend(docs_by_ref)
+
+        # Return unique names
+        return list(set(found))
+
+    def _cancel_linked_doc(self, doctype, docname, cancelled_docs):
+        """Cancel a single linked document with comprehensive error handling.
+        
+        Handles three states:
+        - docstatus == 1 (Submitted): Cancel with ignore_permissions
+        - docstatus == 0 (Draft): Delete with force
+        - docstatus == 2 (Already Cancelled): Skip silently
+        
+        Args:
+            doctype: DocType to cancel
+            docname: Document name to cancel
+            cancelled_docs: List to append (doctype, docname) tuples on success
+        """
+        if not frappe.db.exists(doctype, docname):
+            frappe.msgprint(
+                _("{0} {1} topilmadi (allaqachon o'chirilgan bo'lishi mumkin)").format(doctype, docname),
+                indicator='yellow'
+            )
+            return
+
+        doc = frappe.get_doc(doctype, docname)
+
+        if doc.docstatus == 1:
+            # Submitted → Cancel
+            try:
+                doc.flags.ignore_permissions = True
+                doc.cancel()
+                cancelled_docs.append((doctype, docname))
+            except Exception as e:
+                frappe.throw(
+                    _("<b>{0} {1}</b> ni bekor qilib bo'lmadi:<br>{2}<br><br>"
+                      "Bu hujjatga boshqa tranzaktsiyalar bog'langan bo'lishi mumkin.<br>"
+                      "Iltimos, avval <b>shu hujjatga bog'langan</b> keyingi hujjatlarni "
+                      "bekor qiling, so'ngra qayta urinib ko'ring.").format(
+                        doctype, docname, str(e)
+                    ),
+                    title=_("Bekor qilish xatosi — bog'liqlik mavjud")
+                )
+        elif doc.docstatus == 0:
+            # Draft → Delete
+            try:
+                doc.flags.ignore_permissions = True
+                frappe.delete_doc(doctype, docname, force=True, ignore_permissions=True)
+                cancelled_docs.append((doctype, f"{docname} (o'chirildi)"))
+            except Exception as e:
+                frappe.msgprint(
+                    _("{0} {1} draft hujjatini o'chirib bo'lmadi: {2}").format(
+                        doctype, docname, str(e)
+                    ),
+                    indicator='yellow'
+                )
+        # docstatus == 2 → Already cancelled, skip silently
+
     def create_rasxod_material_transfer(self):
         """Create Stock Entry (Material Transfer) for rasxod_po_zakasu operation.
         
@@ -233,7 +452,9 @@ class Asosiypanel(Document):
         se.insert()
         se.submit()
         
-        # Store the Stock Entry name for reference
+        # Store reference for cancellation tracking
+        self._store_linked_doc('Stock Entry', se.name)
+        
         frappe.msgprint(
             _("Material Transfer <a href='/app/stock-entry/{0}'>{0}</a> created. Materials moved to WIP warehouse.").format(se.name),
             indicator='green',
@@ -309,6 +530,9 @@ class Asosiypanel(Document):
         pi.flags.ignore_permissions = True
         pi.insert()
         pi.submit()
+        
+        # Store reference for cancellation tracking
+        self._store_linked_doc('Purchase Invoice', pi.name)
         
         # Calculate base amount for display
         total_amount = sum(flt(item.amount) for item in self.items)
@@ -516,6 +740,9 @@ class Asosiypanel(Document):
         se.flags.ignore_permissions = True
         se.insert()
         se.submit()
+        
+        # Store reference for cancellation tracking
+        self._store_linked_doc('Stock Entry', se.name)
         
         # ========================================
         # USER FEEDBACK WITH TRACEABILITY
@@ -748,6 +975,9 @@ class Asosiypanel(Document):
         dn.insert()
         dn.submit()
         
+        # Store reference for cancellation tracking
+        self._store_linked_doc('Delivery Note', dn.name)
+        
         self.add_comment('Info', _('1. Delivery Note {0} created and submitted').format(
             f'<a href="/app/delivery-note/{dn.name}">{dn.name}</a>'
         ))
@@ -840,6 +1070,9 @@ class Asosiypanel(Document):
         # DO NOT SUBMIT - Leave as Draft for manual review (STAGE 2)
         # pr.submit()
         
+        # Store as secondary linked doc for cancellation tracking
+        self._store_linked_doc('Purchase Receipt', pr.name, secondary=True)
+        
         self.add_comment('Info', _('2. Purchase Receipt {0} created as DRAFT (Target Company: {1}). Please review and submit manually.').format(
             f'<a href="/app/purchase-receipt/{pr.name}">{pr.name}</a>',
             self.target_company
@@ -875,6 +1108,10 @@ class Asosiypanel(Document):
         se.flags.ignore_permissions = True
         se.insert()
         se.submit()
+        
+        # Store reference for cancellation tracking
+        self._store_linked_doc('Stock Entry', se.name)
+        
         self.add_comment('Info', _('Stock Entry {0} created').format(
              f'<a href="/app/stock-entry/{se.name}">{se.name}</a>'
         ))
@@ -926,6 +1163,9 @@ class Asosiypanel(Document):
 
             mr_doc.insert(ignore_permissions=True)
             mr_doc.submit()
+            
+            # Store reference for cancellation tracking
+            self._store_linked_doc('Material Request', mr_doc.name)
 
             # Force status to "Pending" to ensure visibility in Purchase Order
             frappe.db.set_value("Material Request", mr_doc.name, "status", "Pending", update_modified=False)
@@ -951,7 +1191,11 @@ class Asosiypanel(Document):
             frappe.throw(_("Failed to create Material Request. Please check Error Log."))
 
     def make_purchase_receipt(self):
-        """Create and submit ERPNext Purchase Receipt for purchase_receipt."""
+        """Create and submit ERPNext Purchase Receipt for purchase_receipt.
+        
+        CRITICAL: Maps purchase_order and purchase_order_item (po_detail) to each
+        PR item so ERPNext updates received_qty on the original Purchase Order.
+        """
         self._validate_purchase_receipt()
 
         try:
@@ -963,6 +1207,11 @@ class Asosiypanel(Document):
             if hasattr(pr_doc, "currency") and getattr(self, 'currency', None):
                 pr_doc.currency = self.currency
 
+            # Sync exchange rate from Asosiy panel
+            exchange_rate = flt(getattr(self, 'exchange_rate', None))
+            if exchange_rate and exchange_rate > 0:
+                pr_doc.conversion_rate = exchange_rate
+
             # Map price list if relevant in your setup (optional field)
             if hasattr(pr_doc, "buying_price_list") and self.price_list:
                 pr_doc.buying_price_list = self.price_list
@@ -970,20 +1219,31 @@ class Asosiypanel(Document):
             if hasattr(pr_doc, "set_warehouse") and self.from_warehouse:
                 pr_doc.set_warehouse = self.from_warehouse
 
+            # Remarks for traceability and cancellation chain
+            pr_doc.remarks = _("Created from Asosiy panel {0}").format(self.name)
+
             for row in self.items:
-                pr_doc.append(
-                    "items",
-                    {
-                        "item_code": row.item_code,
-                        "qty": row.qty,
-                        "uom": row.uom,
-                        "rate": getattr(row, "rate", None),
-                        "warehouse": self.from_warehouse,
-                    },
-                )
+                pr_item = {
+                    "item_code": row.item_code,
+                    "qty": row.qty,
+                    "uom": row.uom,
+                    "rate": getattr(row, "rate", None),
+                    "warehouse": self.from_warehouse,
+                }
+
+                # CRITICAL: Map PO reference so ERPNext updates received_qty
+                if getattr(row, "purchase_order", None):
+                    pr_item["purchase_order"] = row.purchase_order
+                if getattr(row, "purchase_order_item", None):
+                    pr_item["purchase_order_item"] = row.purchase_order_item
+
+                pr_doc.append("items", pr_item)
 
             pr_doc.insert(ignore_permissions=True)
             pr_doc.submit()
+            
+            # Store reference for cancellation tracking
+            self._store_linked_doc('Purchase Receipt', pr_doc.name)
 
             pr_link = f"<a href='/app/purchase-receipt/{pr_doc.name}'>{pr_doc.name}</a>"
             frappe.msgprint(
@@ -1025,6 +1285,10 @@ class Asosiypanel(Document):
         si.flags.ignore_permissions = True
         si.insert()
         si.submit()
+        
+        # Store reference for cancellation tracking
+        self._store_linked_doc('Sales Invoice', si.name)
+        
         self.add_comment('Info', _('Sales Invoice {0} created').format(
             f'<a href="/app/sales-invoice/{si.name}">{si.name}</a>'
         ))
@@ -1319,11 +1583,13 @@ def get_any_available_price(item_code, preferred_price_list, currency=None):
 
 @frappe.whitelist()
 def get_items_from_purchase_orders(source_names):
-    """Fetch ALL items from selected Purchase Order(s) for Asosiy panel.
+    """Fetch PENDING items from selected Purchase Order(s) for Asosiy panel.
     
-    Returns every item regardless of received_qty or PO status.
-    This allows pulling items even from Completed Purchase Orders
-    (needed for 'Приход на склад' operation).
+    For each PO item, calculates:
+        pending_qty = flt(qty) - flt(received_qty)
+    
+    Only items with pending_qty > 0 are returned.
+    Example: PO has 50 units, 20 already received → returns 30.
     """
     import json
     
@@ -1341,6 +1607,7 @@ def get_items_from_purchase_orders(source_names):
             poi.item_code,
             poi.item_name,
             poi.qty,
+            poi.received_qty,
             poi.uom,
             poi.stock_uom,
             poi.rate,
@@ -1355,13 +1622,20 @@ def get_items_from_purchase_orders(source_names):
     
     items = []
     for row in po_items:
+        pending_qty = flt(row.qty) - flt(row.received_qty)
+        
+        # Skip fully received items
+        if pending_qty <= 0:
+            continue
+        
+        rate = flt(row.rate)
         items.append({
             "item_code": row.item_code,
             "item_name": row.item_name,
-            "qty": flt(row.qty),
+            "qty": pending_qty,
             "uom": row.uom or row.stock_uom,
-            "rate": flt(row.rate),
-            "amount": flt(row.qty) * flt(row.rate),
+            "rate": rate,
+            "amount": flt(pending_qty * rate),
             "purchase_order": row.purchase_order,
             "purchase_order_item": row.purchase_order_item,
         })
@@ -1372,9 +1646,9 @@ def get_items_from_purchase_orders(source_names):
 @frappe.whitelist()
 @frappe.validate_and_sanitize_search_inputs
 def get_purchase_orders_for_selection(doctype, txt, searchfield, start, page_len, filters):
-    """Custom query to fetch Purchase Orders with item summary for MultiSelectDialog.
+    """Custom query to fetch Purchase Orders with remaining item summary.
     
-    Returns Purchase Orders with a summary of items to help users identify the correct PO.
+    Only shows POs where at least one item has remaining qty (qty - received_qty) > 0.
     """
     supplier = filters.get("supplier")
     company = filters.get("company")
@@ -1382,7 +1656,6 @@ def get_purchase_orders_for_selection(doctype, txt, searchfield, start, page_len
     if not supplier or not company:
         return []
     
-    # Build SQL query with GROUP_CONCAT for items summary
     query = """
         SELECT 
             po.name,
@@ -1390,22 +1663,28 @@ def get_purchase_orders_for_selection(doctype, txt, searchfield, start, page_len
             po.transaction_date,
             po.grand_total,
             GROUP_CONCAT(
-                DISTINCT poi.item_name 
+                DISTINCT CONCAT(
+                    poi.item_name, 
+                    ' (qoldiq: ', ROUND(poi.qty - poi.received_qty, 2), '/', ROUND(poi.qty, 2), ')'
+                ) 
                 ORDER BY poi.idx 
                 SEPARATOR ', '
             ) as items_summary
         FROM 
             `tabPurchase Order` po
-        LEFT JOIN 
+        INNER JOIN 
             `tabPurchase Order Item` poi ON poi.parent = po.name
+                AND poi.qty > poi.received_qty
         WHERE 
             po.docstatus = 1
             AND po.supplier = %(supplier)s
             AND po.company = %(company)s
-            AND po.status NOT IN ('Closed', 'Delivered')
+            AND po.status NOT IN ('Completed', 'Closed', 'Cancelled')
             AND (po.name LIKE %(txt)s OR po.supplier LIKE %(txt)s)
         GROUP BY 
             po.name
+        HAVING
+            SUM(poi.qty - poi.received_qty) > 0
         ORDER BY 
             po.transaction_date DESC
         LIMIT 
@@ -1422,6 +1701,27 @@ def get_purchase_orders_for_selection(doctype, txt, searchfield, start, page_len
             "page_len": page_len
         }
     )
+
+
+@frappe.whitelist()
+def get_purchase_order_meta(po_name):
+    """Get currency and price list metadata from a Purchase Order.
+    
+    Used by JS to sync currency/exchange_rate/price_list when fetching items from PO.
+    
+    Returns:
+        dict: {currency, buying_price_list, conversion_rate}
+    """
+    if not po_name:
+        return {}
+    
+    meta = frappe.db.get_value(
+        'Purchase Order', po_name,
+        ['currency', 'buying_price_list', 'conversion_rate'],
+        as_dict=True
+    )
+    
+    return meta or {}
 
 
 @frappe.whitelist()
