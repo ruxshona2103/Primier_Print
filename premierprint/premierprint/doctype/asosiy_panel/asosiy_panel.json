@@ -1,277 +1,314 @@
 {
- "actions": [],
- "allow_rename": 1,
- "creation": "2026-01-26 16:11:08.840583",
- "doctype": "DocType",
- "engine": "InnoDB",
- "field_order": [
-  "asosiy_malumotlar_section",
-  "operation_type",
-  "posting_date",
-  "column_break_rlsq",
-  "company",
-  "target_company",
-  "amended_from",
-  "sales_order_section",
-  "sales_order",
-  "sales_order_item",
-  "column_break_lgfa",
-  "finished_good",
-  "production_qty",
-  "party_section",
-  "supplier",
-  "customer",
-  "column_break_ecmh",
-  "warehouse_section",
-  "from_warehouse",
-  "column_break_cqfm",
-  "to_warehouse",
-  "target_warehouse",
-  "currency_section",
-  "currency",
-  "exchange_rate",
-  "price_list",
-  "column_break_ppdk",
-  "payment_due_date",
-  "tovar_jadvali_section",
-  "items",
-  "jami_summalar_section",
-  "total_quantity",
-  "column_break_tvle",
-  "total_amount",
-  "purpose"
- ],
- "fields": [
-  {
-   "fieldname": "company",
-   "fieldtype": "Link",
-   "label": "Company ",
-   "options": "Company"
-  },
-  {
-   "fieldname": "payment_due_date",
-   "fieldtype": "Date",
-   "label": "Payment Due Date"
-  },
-  {
-   "fieldname": "items",
-   "fieldtype": "Table",
-   "label": "Items",
-   "options": "Asosiy panel item"
-  },
-  {
-   "fieldname": "customer",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "label": "Customer",
-   "options": "Customer"
-  },
-  {
-   "fieldname": "amended_from",
-   "fieldtype": "Link",
-   "label": "Amended From",
-   "no_copy": 1,
-   "options": "Asosiy panel",
-   "print_hide": 1,
-   "read_only": 1,
-   "search_index": 1
-  },
-  {
-   "fieldname": "operation_type",
-   "fieldtype": "Select",
-   "in_list_view": 1,
-   "label": "Operation Type",
-   "options": "\u0417\u0430\u043f\u0440\u043e\u0441 \u043c\u0430\u0442\u0435\u0440\u0438\u0430\u043b\u043e\u0432\n\u041f\u0440\u0438\u0445\u043e\u0434 \u043d\u0430 \u0441\u043a\u043b\u0430\u0434\n\u0421\u043f\u0438\u0441\u0430\u043d\u0438\u0435 \u043c\u0430\u0442\u0435\u0440\u0438\u0430\u043b\u043e\u0432\n\u041f\u0435\u0440\u0435\u043c\u0435\u0449\u0435\u043d\u0438\u044f\n\u0420\u0430\u0441\u0445\u043e\u0434 \u043f\u043e \u0437\u0430\u043a\u0430\u0437\u0443\n\u0423\u0441\u043b\u0443\u0433\u0438 \u043f\u043e \u0437\u0430\u043a\u0430\u0437\u0443\n\u041f\u0440\u043e\u0438\u0437\u0432\u043e\u0434\u0441\u0442\u0432\u043e\n\u041e\u0442\u0433\u0440\u0443\u0437\u043a\u0430 \u0442\u043e\u0432\u0430\u0440\u043e\u0432"
-  },
-  {
-   "fieldname": "purpose",
-   "fieldtype": "Data",
-   "hidden": 1,
-   "label": "Purpose"
-  },
-  {
-   "default": "Today",
-   "fieldname": "posting_date",
-   "fieldtype": "Date",
-   "label": "Posting Date"
-  },
-  {
-   "fieldname": "supplier",
-   "fieldtype": "Link",
-   "label": "Supplier",
-   "options": "Supplier"
-  },
-  {
-   "fieldname": "target_company",
-   "fieldtype": "Link",
-   "label": "Target Company",
-   "options": "Company"
-  },
-  {
-   "fieldname": "from_warehouse",
-   "fieldtype": "Link",
-   "label": "Warehouse",
-   "options": "Warehouse"
-  },
-  {
-   "fieldname": "to_warehouse",
-   "fieldtype": "Link",
-   "label": "To warehouse",
-   "options": "Warehouse"
-  },
-  {
-   "fieldname": "target_warehouse",
-   "fieldtype": "Link",
-   "label": "Target Warehouse",
-   "options": "Warehouse"
-  },
-  {
-   "fieldname": "currency",
-   "fieldtype": "Link",
-   "label": "Currency",
-   "options": "Currency"
-  },
-  {
-   "default": "1",
-   "fieldname": "exchange_rate",
-   "fieldtype": "Float",
-   "label": "Exchange Rate",
-   "precision": "9"
-  },
-  {
-   "fieldname": "price_list",
-   "fieldtype": "Link",
-   "label": "Price List",
-   "options": "Price List"
-  },
-  {
-   "fieldname": "total_quantity",
-   "fieldtype": "Float",
-   "label": "Total Quantity",
-   "read_only": 1
-  },
-  {
-   "fieldname": "total_amount",
-   "fieldtype": "Currency",
-   "label": "Total Amount",
-   "read_only": 1
-  },
-  {
-   "fieldname": "asosiy_malumotlar_section",
-   "fieldtype": "Section Break",
-   "label": "Asosiy ma'lumotlar"
-  },
-  {
-   "fieldname": "column_break_rlsq",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "party_section",
-   "fieldtype": "Section Break",
-   "label": "Hamkor ma'lumotlari"
-  },
-  {
-   "fieldname": "column_break_ecmh",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "warehouse_section",
-   "fieldtype": "Section Break",
-   "label": "Ombor va Logistika"
-  },
-  {
-   "fieldname": "column_break_cqfm",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "currency_section",
-   "fieldtype": "Section Break",
-   "label": "Valyuta va Narxlar"
-  },
-  {
-   "fieldname": "column_break_ppdk",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "tovar_jadvali_section",
-   "fieldtype": "Section Break",
-   "label": "Tovar jadvali"
-  },
-  {
-   "fieldname": "jami_summalar_section",
-   "fieldtype": "Section Break",
-   "label": "Jami summalar"
-  },
-  {
-   "fieldname": "column_break_tvle",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "sales_order_section",
-   "fieldtype": "Section Break",
-   "label": "Production/Sales Link"
-  },
-  {
-   "fieldname": "sales_order",
-   "fieldtype": "Link",
-   "label": "Sales Order",
-   "options": "Sales Order"
-  },
-  {
-   "fieldname": "sales_order_item",
-   "fieldtype": "Link",
-   "ignore_user_permissions": 1,
-   "label": "Sales Order Item",
-   "options": "Sales Order Item"
-  },
-  {
-   "fieldname": "column_break_lgfa",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "finished_good",
-   "fieldtype": "Link",
-   "ignore_user_permissions": 1,
-   "in_list_view": 1,
-   "label": "Finished Good",
-   "options": "Item",
-   "read_only": 1
-  },
-  {
-   "fieldname": "production_qty",
-   "fieldtype": "Float",
-   "label": "Production Quantity"
-  }
- ],
- "grid_page_length": 50,
- "index_web_pages_for_search": 1,
- "is_submittable": 1,
- "links": [],
- "modified": "2026-02-16 16:59:13.348660",
- "modified_by": "Administrator",
- "module": "premierprint",
- "name": "Asosiy panel",
- "owner": "Administrator",
- "permissions": [
-  {
-   "amend": 1,
-   "cancel": 1,
-   "create": 1,
-   "delete": 1,
-   "email": 1,
-   "export": 1,
-   "print": 1,
-   "read": 1,
-   "report": 1,
-   "role": "System Manager",
-   "share": 1,
-   "submit": 1,
-   "write": 1
-  }
- ],
- "row_format": "Dynamic",
- "rows_threshold_for_grid_search": 20,
- "sort_field": "modified",
- "sort_order": "DESC",
- "states": []
+    "actions": [],
+    "allow_rename": 1,
+    "creation": "2026-01-26 16:11:08.840583",
+    "doctype": "DocType",
+    "engine": "InnoDB",
+    "field_order": [
+        "asosiy_malumotlar_section",
+        "operation_type",
+        "posting_date",
+        "column_break_rlsq",
+        "company",
+        "target_company",
+        "amended_from",
+        "sales_order_section",
+        "sales_order",
+        "sales_order_item",
+        "column_break_lgfa",
+        "finished_good",
+        "production_qty",
+        "party_section",
+        "supplier",
+        "customer",
+        "column_break_ecmh",
+        "warehouse_section",
+        "from_warehouse",
+        "column_break_cqfm",
+        "to_warehouse",
+        "target_warehouse",
+        "currency_section",
+        "currency",
+        "exchange_rate",
+        "price_list",
+        "column_break_ppdk",
+        "payment_due_date",
+        "tovar_jadvali_section",
+        "items",
+        "jami_summalar_section",
+        "total_quantity",
+        "column_break_tvle",
+        "total_amount",
+        "purpose",
+        "linked_document_type",
+        "linked_document_name",
+        "linked_document_type_2",
+        "linked_document_name_2"
+    ],
+    "fields": [
+        {
+            "fieldname": "company",
+            "fieldtype": "Link",
+            "label": "Company ",
+            "options": "Company"
+        },
+        {
+            "fieldname": "payment_due_date",
+            "fieldtype": "Date",
+            "label": "Payment Due Date"
+        },
+        {
+            "fieldname": "items",
+            "fieldtype": "Table",
+            "label": "Items",
+            "options": "Asosiy panel item"
+        },
+        {
+            "fieldname": "customer",
+            "fieldtype": "Link",
+            "in_list_view": 1,
+            "label": "Customer",
+            "options": "Customer"
+        },
+        {
+            "fieldname": "amended_from",
+            "fieldtype": "Link",
+            "label": "Amended From",
+            "no_copy": 1,
+            "options": "Asosiy panel",
+            "print_hide": 1,
+            "read_only": 1,
+            "search_index": 1
+        },
+        {
+            "fieldname": "operation_type",
+            "fieldtype": "Select",
+            "in_list_view": 1,
+            "label": "Operation Type",
+            "options": "\u0417\u0430\u043f\u0440\u043e\u0441 \u043c\u0430\u0442\u0435\u0440\u0438\u0430\u043b\u043e\u0432\n\u041f\u0440\u0438\u0445\u043e\u0434 \u043d\u0430 \u0441\u043a\u043b\u0430\u0434\n\u0421\u043f\u0438\u0441\u0430\u043d\u0438\u0435 \u043c\u0430\u0442\u0435\u0440\u0438\u0430\u043b\u043e\u0432\n\u041f\u0435\u0440\u0435\u043c\u0435\u0449\u0435\u043d\u0438\u044f\n\u0420\u0430\u0441\u0445\u043e\u0434 \u043f\u043e \u0437\u0430\u043a\u0430\u0437\u0443\n\u0423\u0441\u043b\u0443\u0433\u0438 \u043f\u043e \u0437\u0430\u043a\u0430\u0437\u0443\n\u041f\u0440\u043e\u0438\u0437\u0432\u043e\u0434\u0441\u0442\u0432\u043e\n\u041e\u0442\u0433\u0440\u0443\u0437\u043a\u0430 \u0442\u043e\u0432\u0430\u0440\u043e\u0432"
+        },
+        {
+            "fieldname": "purpose",
+            "fieldtype": "Data",
+            "hidden": 1,
+            "label": "Purpose"
+        },
+        {
+            "default": "Today",
+            "fieldname": "posting_date",
+            "fieldtype": "Date",
+            "label": "Posting Date"
+        },
+        {
+            "fieldname": "supplier",
+            "fieldtype": "Link",
+            "label": "Supplier",
+            "options": "Supplier"
+        },
+        {
+            "fieldname": "target_company",
+            "fieldtype": "Link",
+            "label": "Target Company",
+            "options": "Company"
+        },
+        {
+            "fieldname": "from_warehouse",
+            "fieldtype": "Link",
+            "label": "Warehouse",
+            "options": "Warehouse"
+        },
+        {
+            "fieldname": "to_warehouse",
+            "fieldtype": "Link",
+            "label": "To warehouse",
+            "options": "Warehouse"
+        },
+        {
+            "fieldname": "target_warehouse",
+            "fieldtype": "Link",
+            "label": "Target Warehouse",
+            "options": "Warehouse"
+        },
+        {
+            "fieldname": "currency",
+            "fieldtype": "Link",
+            "label": "Currency",
+            "options": "Currency"
+        },
+        {
+            "default": "1",
+            "fieldname": "exchange_rate",
+            "fieldtype": "Float",
+            "label": "Exchange Rate",
+            "precision": "9"
+        },
+        {
+            "fieldname": "price_list",
+            "fieldtype": "Link",
+            "label": "Price List",
+            "options": "Price List"
+        },
+        {
+            "fieldname": "total_quantity",
+            "fieldtype": "Float",
+            "label": "Total Quantity",
+            "read_only": 1
+        },
+        {
+            "fieldname": "total_amount",
+            "fieldtype": "Currency",
+            "label": "Total Amount",
+            "options": "currency",
+            "read_only": 1
+        },
+        {
+            "fieldname": "asosiy_malumotlar_section",
+            "fieldtype": "Section Break",
+            "label": "Asosiy ma'lumotlar"
+        },
+        {
+            "fieldname": "column_break_rlsq",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "party_section",
+            "fieldtype": "Section Break",
+            "label": "Hamkor ma'lumotlari"
+        },
+        {
+            "fieldname": "column_break_ecmh",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "warehouse_section",
+            "fieldtype": "Section Break",
+            "label": "Ombor va Logistika"
+        },
+        {
+            "fieldname": "column_break_cqfm",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "currency_section",
+            "fieldtype": "Section Break",
+            "label": "Valyuta va Narxlar"
+        },
+        {
+            "fieldname": "column_break_ppdk",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "tovar_jadvali_section",
+            "fieldtype": "Section Break",
+            "label": "Tovar jadvali"
+        },
+        {
+            "fieldname": "jami_summalar_section",
+            "fieldtype": "Section Break",
+            "label": "Jami summalar"
+        },
+        {
+            "fieldname": "column_break_tvle",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "sales_order_section",
+            "fieldtype": "Section Break",
+            "label": "Production/Sales Link"
+        },
+        {
+            "fieldname": "sales_order",
+            "fieldtype": "Link",
+            "label": "Sales Order",
+            "options": "Sales Order"
+        },
+        {
+            "fieldname": "sales_order_item",
+            "fieldtype": "Link",
+            "ignore_user_permissions": 1,
+            "label": "Sales Order Item",
+            "options": "Sales Order Item"
+        },
+        {
+            "fieldname": "column_break_lgfa",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "finished_good",
+            "fieldtype": "Link",
+            "ignore_user_permissions": 1,
+            "in_list_view": 1,
+            "label": "Finished Good",
+            "options": "Item",
+            "read_only": 1
+        },
+        {
+            "fieldname": "production_qty",
+            "fieldtype": "Float",
+            "label": "Production Quantity"
+        },
+        {
+            "fieldname": "linked_document_type",
+            "fieldtype": "Data",
+            "hidden": 1,
+            "label": "Linked Document Type",
+            "no_copy": 1,
+            "read_only": 1
+        },
+        {
+            "fieldname": "linked_document_name",
+            "fieldtype": "Data",
+            "hidden": 1,
+            "label": "Linked Document Name",
+            "no_copy": 1,
+            "read_only": 1
+        },
+        {
+            "fieldname": "linked_document_type_2",
+            "fieldtype": "Data",
+            "hidden": 1,
+            "label": "Linked Document Type 2",
+            "no_copy": 1,
+            "read_only": 1
+        },
+        {
+            "fieldname": "linked_document_name_2",
+            "fieldtype": "Data",
+            "hidden": 1,
+            "label": "Linked Document Name 2",
+            "no_copy": 1,
+            "read_only": 1
+        }
+    ],
+    "grid_page_length": 50,
+    "index_web_pages_for_search": 1,
+    "is_submittable": 1,
+    "links": [],
+    "modified": "2026-02-16 16:59:13.348660",
+    "modified_by": "Administrator",
+    "module": "premierprint",
+    "name": "Asosiy panel",
+    "owner": "Administrator",
+    "permissions": [
+        {
+            "amend": 1,
+            "cancel": 1,
+            "create": 1,
+            "delete": 1,
+            "email": 1,
+            "export": 1,
+            "print": 1,
+            "read": 1,
+            "report": 1,
+            "role": "System Manager",
+            "share": 1,
+            "submit": 1,
+            "write": 1
+        }
+    ],
+    "row_format": "Dynamic",
+    "rows_threshold_for_grid_search": 20,
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "states": []
 }
