@@ -11,17 +11,17 @@
 frappe.ui.form.on("Asosiy panel", {
     refresh(frm) {
         console.log("🔄 UI Refresh started for operation:", frm.doc.operation_type || "NOT SET");
-        
+
         frm.trigger("setup_queries");
         frm.trigger("toggle_ui");
         frm.trigger("set_warehouse_filters");
-        
+
         // Render custom buttons
         frm.trigger("render_custom_buttons");
-        
+
         // Stock Ledger button - only shown for submitted documents
         if (frm.doc.docstatus === 1) {
-            frm.add_custom_button(__('Stock Ledger'), function() {
+            frm.add_custom_button(__('Stock Ledger'), function () {
                 frappe.route_options = {
                     voucher_no: frm.doc.name,
                     from_date: frm.doc.posting_date,
@@ -32,27 +32,27 @@ frappe.ui.form.on("Asosiy panel", {
             }, __("View"));
         }
     },
-    
+
     render_custom_buttons(frm) {
         // Remove existing Purchase Order button to prevent duplicates
         if (frm.custom_buttons && frm.custom_buttons["Get Items From"]) {
             frm.remove_custom_button("Purchase Order", "Get Items From");
         }
-        
+
         // Robust string comparison with trim and type coercion
         let operation_type = String(frm.doc.operation_type || "").trim();
         let is_purchase_receipt = operation_type === "Приход на склад";
         let is_draft = frm.doc.docstatus === 0;
-        
+
         console.log("🔍 DEBUG - Operation Type:", operation_type);
         console.log("🔍 DEBUG - Is Purchase Receipt:", is_purchase_receipt);
         console.log("🔍 DEBUG - Is Draft:", is_draft);
-        
+
         // "Get Items From" button for Purchase Receipt operation
         if (is_purchase_receipt && is_draft) {
-            frm.add_custom_button(__('Purchase Order'), function() {
+            frm.add_custom_button(__('Purchase Order'), function () {
                 console.log("🔘 BUTTON CLICKED - Starting Purchase Order dialog");
-                
+
                 // Validation: Ensure Supplier and Company are selected
                 if (!frm.doc.supplier || !frm.doc.company) {
                     frappe.msgprint({
@@ -62,10 +62,10 @@ frappe.ui.form.on("Asosiy panel", {
                     });
                     return;
                 }
-                
+
                 console.log("✅ Opening standard MultiSelectDialog");
-                console.log("📋 Filters:", {supplier: frm.doc.supplier, company: frm.doc.company});
-                
+                console.log("📋 Filters:", { supplier: frm.doc.supplier, company: frm.doc.company });
+
                 // Standard Frappe MultiSelectDialog - No custom query needed
                 let d = new frappe.ui.form.MultiSelectDialog({
                     doctype: "Purchase Order",
@@ -82,7 +82,7 @@ frappe.ui.form.on("Asosiy panel", {
                                 docstatus: 1,
                                 supplier: frm.doc.supplier,
                                 company: frm.doc.company,
-                                status: ["not in", ["Closed", "Delivered"]]
+                                status: ["not in", ["Completed", "Closed", "Cancelled"]]
                             }
                         };
                     },
@@ -90,45 +90,82 @@ frappe.ui.form.on("Asosiy panel", {
                     action(selections) {
                         d.dialog.hide();
                         console.log("✅ Selections:", selections);
-                        
+
                         if (selections && selections.length > 0) {
+                            // STEP 1: Fetch currency metadata from the first PO BEFORE loading items
+                            // This prevents the '$' symbol race condition
+                            let first_po = selections[0];
                             frappe.call({
-                                method: "premierprint.premierprint.doctype.asosiy_panel.asosiy_panel.get_items_from_purchase_orders",
-                                args: {
-                                    source_names: JSON.stringify(selections)
-                                },
+                                method: "premierprint.premierprint.doctype.asosiy_panel.asosiy_panel.get_purchase_order_meta",
+                                args: { po_name: first_po },
                                 freeze: true,
-                                freeze_message: __("Tovarlar yuklanmoqda..."),
-                                callback: function(r) {
-                                    console.log("📦 Server Response Raw:", r);
-                                    console.log("📦 Items received:", r.message);
-                                    
-                                    if (r.message && r.message.length > 0) {
-                                        frm.clear_table("items");
-                                        r.message.forEach(item => {
-                                            let row = frm.add_child("items");
-                                            Object.assign(row, item);
-                                        });
-                                        frm.refresh_field("items");
-                                        frm.trigger("calculate_totals");
-                                        frappe.show_alert({
-                                            message: __("{0} ta tovar muvaffaqiyatli yuklandi", [r.message.length]),
-                                            indicator: "green"
-                                        }, 5);
-                                    } else {
-                                        frappe.msgprint({
-                                            title: __('Ma\'lumot yo\'q'),
-                                            message: __('Serverdan bo\'sh ro\'yxat keldi. Purchase Order statusini tekshiring. Selections: ') + JSON.stringify(selections),
-                                            indicator: 'orange'
-                                        });
+                                freeze_message: __("Valyuta ma'lumoti yuklanmoqda..."),
+                                callback: function (meta_r) {
+                                    // Apply currency FIRST so all subsequent formatting uses correct symbol
+                                    if (meta_r.message) {
+                                        let meta = meta_r.message;
+                                        if (meta.currency) {
+                                            frm.set_value('currency', meta.currency);
+                                            frm.refresh_field('currency');
+                                        }
+                                        if (meta.conversion_rate) {
+                                            frm.set_value('exchange_rate', flt(meta.conversion_rate));
+                                            frm.refresh_field('exchange_rate');
+                                        }
+                                        if (meta.buying_price_list) {
+                                            frm.set_value('price_list', meta.buying_price_list);
+                                        }
                                     }
-                                },
-                                error: function(r) {
-                                    console.error("❌ Error:", r);
-                                    frappe.msgprint({
-                                        title: __('Xatolik'),
-                                        message: __('Tovarlarni yuklashda xatolik yuz berdi.'),
-                                        indicator: 'red'
+
+                                    // STEP 2: Now fetch items (currency is already set)
+                                    frappe.call({
+                                        method: "premierprint.premierprint.doctype.asosiy_panel.asosiy_panel.get_items_from_purchase_orders",
+                                        args: {
+                                            source_names: JSON.stringify(selections)
+                                        },
+                                        freeze: true,
+                                        freeze_message: __("Tovarlar yuklanmoqda..."),
+                                        callback: function (r) {
+                                            console.log("📦 Items received:", r.message);
+
+                                            if (r.message && r.message.length > 0) {
+                                                frm.clear_table("items");
+                                                r.message.forEach(item => {
+                                                    console.log("📦 Mapping remaining qty for PO:", item.purchase_order, "| Item:", item.item_code, "| Remaining Qty:", item.qty);
+                                                    let row = frm.add_child("items");
+                                                    Object.assign(row, item);
+                                                });
+                                                frm.refresh_field("items");
+                                                frm.trigger("calculate_totals");
+
+                                                let currency_label = frm.doc.currency || '';
+                                                frappe.show_alert({
+                                                    message: __("{0} ta tovar muvaffaqiyatli yuklandi ({1})", [r.message.length, currency_label]),
+                                                    indicator: "green"
+                                                }, 5);
+
+                                                if (meta_r.message && meta_r.message.currency) {
+                                                    frappe.show_alert({
+                                                        message: __('Valyuta PO dan sinxronlandi: {0}', [meta_r.message.currency]),
+                                                        indicator: 'blue'
+                                                    }, 3);
+                                                }
+                                            } else {
+                                                frappe.msgprint({
+                                                    title: __('Ma\'lumot yo\'q'),
+                                                    message: __('Serverdan bo\'sh ro\'yxat keldi. Purchase Order statusini tekshiring. Selections: ') + JSON.stringify(selections),
+                                                    indicator: 'orange'
+                                                });
+                                            }
+                                        },
+                                        error: function (r) {
+                                            console.error("❌ Error:", r);
+                                            frappe.msgprint({
+                                                title: __('Xatolik'),
+                                                message: __('Tovarlarni yuklashda xatolik yuz berdi.'),
+                                                indicator: 'red'
+                                            });
+                                        }
                                     });
                                 }
                             });
@@ -136,11 +173,11 @@ frappe.ui.form.on("Asosiy panel", {
                     }
                 });
             }, __("Get Items From"));
-            
+
             console.log("✅ Purchase Order button added");
         }
     },
-    
+
     company(frm) {
         frm.trigger("setup_queries");
         // Clear warehouses when company changes and reset defaults
@@ -261,7 +298,7 @@ frappe.ui.form.on("Asosiy panel", {
     },
     toggle_ui(frm) {
         console.log("🎨 UI Toggle started for:", frm.doc.operation_type || "EMPTY");
-        
+
         // ========================================
         // CRITICAL: ALWAYS show basic fields
         // ========================================
@@ -277,15 +314,16 @@ frappe.ui.form.on("Asosiy panel", {
             frm.toggle_display('posting_date', true);
             frm.toggle_reqd('posting_date', true);
         }
-        
+
         // Default hide and un-require all optional fields
+        // NOTE: exchange_rate is hidden by default — only shown for financial operations
         const fields_to_toggle = [
-            'customer', 'currency', 'price_list', 'supplier',
+            'customer', 'currency', 'exchange_rate', 'price_list', 'supplier',
             'from_warehouse', 'to_warehouse', 'target_warehouse', 'target_company',
             'finished_good', 'production_qty',
             'sales_order', 'sales_order_item'
         ];
-        
+
         // Safely toggle only fields that exist
         fields_to_toggle.forEach(field => {
             if (frm.fields_dict[field]) {
@@ -323,8 +361,8 @@ frappe.ui.form.on("Asosiy panel", {
             // DELIVERY NOTE LOGIC - Full Inter-Company Support
             // ============================================================
             if (frm.doc.operation_type === 'Отгрузка товаров') {
-                // Always show customer, currency, price_list, from_warehouse
-                frm.toggle_display(['customer', 'currency', 'price_list', 'from_warehouse'], true);
+                // Always show customer, currency, exchange_rate, price_list, from_warehouse
+                frm.toggle_display(['customer', 'currency', 'exchange_rate', 'price_list', 'from_warehouse'], true);
                 frm.toggle_reqd(['customer', 'currency', 'price_list', 'from_warehouse'], true);
 
                 // Show target_company (read-only, auto-filled from internal customer)
@@ -352,7 +390,7 @@ frappe.ui.form.on("Asosiy panel", {
             if (['Производство', 'Услуги по заказу'].includes(frm.doc.operation_type)) {
                 frm.toggle_display('supplier', true);
             }
-            
+
             // Supplier is MANDATORY for service operations (Purchase Invoice creation)
             if (frm.doc.operation_type === 'Услуги по заказу') {
                 frm.toggle_reqd('supplier', true);
@@ -392,8 +430,8 @@ frappe.ui.form.on("Asosiy panel", {
             // PURCHASE RECEIPT LOGIC
             // ============================================================
             if (frm.doc.operation_type === 'Приход на склад') {
-                // Visibility
-                frm.toggle_display(['supplier', 'from_warehouse', 'currency', 'items'], true);
+                // Visibility — show currency AND exchange_rate for proper multi-currency support
+                frm.toggle_display(['supplier', 'from_warehouse', 'currency', 'exchange_rate', 'items'], true);
 
                 // Explicitly keep price_list hidden for purchase_receipt
                 frm.toggle_display('price_list', false);
@@ -404,6 +442,15 @@ frappe.ui.form.on("Asosiy panel", {
                 // Mandatory fields (explicitly via df_property as requested)
                 frm.set_df_property('supplier', 'reqd', 1);
                 frm.set_df_property('from_warehouse', 'reqd', 1);
+
+                // Set default currency to company's base currency if not already set
+                if (!frm.doc.currency && frm.doc.company) {
+                    frappe.db.get_value('Company', frm.doc.company, 'default_currency', (r) => {
+                        if (r && r.default_currency) {
+                            frm.set_value('currency', r.default_currency);
+                        }
+                    });
+                }
             }
 
             // ============================================================
@@ -422,11 +469,11 @@ frappe.ui.form.on("Asosiy panel", {
                 frm.toggle_display(['from_warehouse', 'to_warehouse'], false);
                 frm.toggle_reqd(['from_warehouse', 'to_warehouse'], false);
                 frm.toggle_reqd(['finished_good', 'production_qty'], true);
-                
+
                 // Multi-Currency Support for Service Costs
                 frm.toggle_display(['currency', 'exchange_rate'], true);
                 frm.toggle_reqd('currency', true);
-                
+
                 // Set default currency to company's base currency if not set
                 if (!frm.doc.currency && frm.doc.company) {
                     frappe.db.get_value('Company', frm.doc.company, 'default_currency', (r) => {
@@ -449,14 +496,48 @@ frappe.ui.form.on("Asosiy panel", {
 
             // production - The Aggregator
             if (frm.doc.operation_type === 'Производство') {
-                frm.toggle_display(['from_warehouse', 'to_warehouse'], true);
+                frm.toggle_display(['from_warehouse', 'to_warehouse', 'currency', 'exchange_rate'], true);
                 frm.toggle_reqd(['finished_good', 'production_qty', 'from_warehouse', 'to_warehouse'], true);
                 // Auto-set WIP warehouse as from_warehouse (source for consumption)
                 if (!frm.doc.from_warehouse && frm.doc.company) {
                     frm.trigger('set_production_warehouses');
                 }
+
+                // Default currency if not set
+                if (!frm.doc.currency && frm.doc.company) {
+                    frappe.db.get_value('Company', frm.doc.company, 'default_currency', (r) => {
+                        if (r && r.default_currency) {
+                            frm.set_value('currency', r.default_currency);
+                        }
+                    });
+                }
             }
         }
+
+        // ============================================================
+        // CENTRALIZED: Exchange Rate read-only logic
+        // If currency == company's base currency → exchange_rate = 1, read-only
+        // If currency != company's base currency → exchange_rate editable
+        // ============================================================
+        frm.trigger('sync_exchange_rate_state');
+    },
+    sync_exchange_rate_state(frm) {
+        if (!frm.doc.currency || !frm.doc.company) return;
+
+        frappe.db.get_value('Company', frm.doc.company, 'default_currency', (r) => {
+            if (!r || !r.default_currency) return;
+
+            if (frm.doc.currency === r.default_currency) {
+                // Same currency → force 1.0 and lock
+                if (flt(frm.doc.exchange_rate) !== 1.0) {
+                    frm.set_value('exchange_rate', 1.0);
+                }
+                frm.set_df_property('exchange_rate', 'read_only', 1);
+            } else {
+                // Foreign currency → allow editing
+                frm.set_df_property('exchange_rate', 'read_only', 0);
+            }
+        });
     },
     set_production_warehouses(frm) {
         // Set default warehouses for production operation
@@ -727,10 +808,10 @@ frappe.ui.form.on("Asosiy panel", {
                             is_stock_item: 0,
                             is_wip_item: 0  // Flag: This is a service cost
                         });
-                        
+
                         // Visual hint: Service costs shown with description
                         if (svc.description) {
-                            frappe.model.set_value(row.doctype, row.name, 'item_name', 
+                            frappe.model.set_value(row.doctype, row.name, 'item_name',
                                 '🔧 ' + svc.item_name + ' (Service)');
                         }
                     });
@@ -743,13 +824,13 @@ frappe.ui.form.on("Asosiy panel", {
                     if (materials.length > 0) {
                         msg_parts.push(__('Materials: {0} items ({1})', [
                             materials.length,
-                            format_currency(r.message.total_material_cost, r.message.company_currency)
+                            frappe.format(r.message.total_material_cost, { fieldtype: 'Currency', currency: r.message.company_currency })
                         ]));
                     }
                     if (services.length > 0) {
                         msg_parts.push(__('Services: {0} items ({1})', [
                             services.length,
-                            format_currency(r.message.total_service_cost, r.message.company_currency)
+                            frappe.format(r.message.total_service_cost, { fieldtype: 'Currency', currency: r.message.company_currency })
                         ]));
                     }
                     if (purchase_invoices.length > 0) {
@@ -765,14 +846,14 @@ frappe.ui.form.on("Asosiy panel", {
                     // No data found
                     frm.clear_table('items');
                     frm.refresh_field('items');
-                    
+
                     frappe.msgprint({
                         title: __('No Data Found'),
                         message: __('No materials in WIP or service costs found for Sales Order Item: {0}.<br><br>' +
-                                   'Please ensure:<br>' +
-                                   '1. "Расход по заказу" (Material Transfer to WIP) entries exist<br>' +
-                                   '2. "Услуги по заказу" (Service Cost) Purchase Invoices are submitted', 
-                                   [frm.doc.sales_order_item || 'Not Selected']),
+                            'Please ensure:<br>' +
+                            '1. "Расход по заказу" (Material Transfer to WIP) entries exist<br>' +
+                            '2. "Услуги по заказу" (Service Cost) Purchase Invoices are submitted',
+                            [frm.doc.sales_order_item || 'Not Selected']),
                         indicator: 'orange'
                     });
                 }
@@ -796,7 +877,7 @@ frappe.ui.form.on("Asosiy panel", {
             frappe.db.get_value('Company', frm.doc.company, 'default_currency', (r) => {
                 if (r && r.default_currency) {
                     let company_currency = r.default_currency;
-                    
+
                     // If transaction currency is same as company currency, exchange rate = 1
                     if (frm.doc.currency === company_currency) {
                         frm.set_value('exchange_rate', 1.0);
@@ -809,7 +890,7 @@ frappe.ui.form.on("Asosiy panel", {
                                 to_currency: company_currency,
                                 transaction_date: frm.doc.posting_date || frappe.datetime.get_today()
                             },
-                            callback: function(r) {
+                            callback: function (r) {
                                 if (r.message) {
                                     frm.set_value('exchange_rate', flt(r.message));
                                     frappe.show_alert({
@@ -823,7 +904,7 @@ frappe.ui.form.on("Asosiy panel", {
                 }
             });
         }
-        
+
         // When currency changes, re-fetch rates for all items (for operations with price_list)
         if (frm.doc.price_list && frm.doc.currency) {
             (frm.doc.items || []).forEach(row => {
@@ -832,13 +913,16 @@ frappe.ui.form.on("Asosiy panel", {
                 }
             });
         }
+
+        // Update exchange_rate read-only state based on new currency
+        frm.trigger('sync_exchange_rate_state');
     },
-    
+
     exchange_rate(frm) {
         // Recalculate totals when exchange rate changes (for display purposes)
         frm.trigger('calculate_totals');
     },
-    
+
     calculate_totals(frm) {
         let total_qty = 0;
         let total_amount = 0;
@@ -848,16 +932,19 @@ frappe.ui.form.on("Asosiy panel", {
         });
         frm.set_value("total_quantity", total_qty);
         frm.set_value("total_amount", total_amount);
-        
-        // For multi-currency service operations, show base amount info
-        if (frm.doc.operation_type === 'Услуги по заказу' && frm.doc.currency && frm.doc.exchange_rate && frm.doc.company) {
+
+        // For multi-currency operations, show base amount info
+        // Applies to both 'Услуги по заказу' and 'Приход на склад'
+        let doc_currency = frm.doc.currency || '';
+        let needs_base_display = ['Услуги по заказу', 'Приход на склад'].includes(frm.doc.operation_type);
+
+        if (needs_base_display && doc_currency && frm.doc.exchange_rate && frm.doc.company) {
             frappe.db.get_value('Company', frm.doc.company, 'default_currency', (r) => {
-                if (r && r.default_currency && frm.doc.currency !== r.default_currency) {
+                if (r && r.default_currency && doc_currency !== r.default_currency) {
                     let base_total = total_amount * flt(frm.doc.exchange_rate);
-                    frm.set_df_property('total_amount', 'description', 
-                        __('Base Amount: {0} {1}', [
-                            format_currency(base_total, r.default_currency),
-                            r.default_currency
+                    frm.set_df_property('total_amount', 'description',
+                        __('Bazaviy summa: {0}', [
+                            frappe.format(base_total, { fieldtype: 'Currency', currency: r.default_currency })
                         ])
                     );
                 } else {
