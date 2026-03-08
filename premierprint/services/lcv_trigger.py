@@ -29,6 +29,7 @@ from premierprint.services.lcv_utils import convert_to_company_currency
 
 # Import specialized service modules
 from premierprint.services.transport_lcv import (
+	run_transport_pipeline,
 	create_transport_lcv,
 	validate_transport_lcv_creation,
 	get_purchase_receipts_from_pi
@@ -118,111 +119,13 @@ def on_cancel(doc, method):
 
 def _handle_transport_lcv_creation(doc):
 	"""
-	Handle Transport LCV creation logic.
-
-	CRITICAL STEPS:
-	1. Validate transport cost exists
-	2. Get transport currency from custom_lcv_currency (NOT doc.currency)
-	3. Convert transport cost to company currency if needed
-	4. Get PR list
-	5. Call transport_lcv.create_transport_lcv with converted amount
+	Delegate the full transport pipeline (Carrier PI + LCV) to run_transport_pipeline().
+	All currency conversion, duplicate guards, and submission logic live there.
 
 	Args:
 		doc: Purchase Invoice document
 	"""
-
-	# Check if transport cost exists
-	transport_cost = flt(doc.get("custom_transport_cost"))
-	if transport_cost <= 0:
-		# No transport cost - skip silently
-		return
-
-	# Validate if transport LCV can be created
-	is_valid, error_msg = validate_transport_lcv_creation(doc)
-	if not is_valid:
-		frappe.msgprint(
-			_("Transport LCV not created: {0}").format(error_msg),
-			indicator="blue",
-			alert=True
-		)
-		return
-
-	# Get Purchase Receipts
-	pr_list = get_purchase_receipts_from_pi(doc)
-	if not pr_list:
-		frappe.msgprint(
-			_("No Purchase Receipts found. Transport LCV cannot be created."),
-			indicator="orange",
-			alert=True
-		)
-		return
-
-	# ============================================================
-	# ✅ FIX: Get transport currency from custom_lcv_currency
-	# ============================================================
-	transport_currency = doc.get("custom_lcv_currency")
-
-	if not transport_currency:
-		frappe.msgprint(
-			_("Transport Currency (custom_lcv_currency) is required to create Transport LCV"),
-			indicator="orange",
-			alert=True
-		)
-		return
-
-	# Get exchange rate
-	lcv_exchange_rate = flt(doc.get("custom_lcv_exchange_rate"))
-
-	if lcv_exchange_rate <= 0:
-		frappe.msgprint(
-			_("LCV Exchange Rate is required to create Transport LCV"),
-			indicator="orange",
-			alert=True
-		)
-		return
-
-	# Get company currency
-	company_currency = frappe.get_cached_value("Company", doc.company, "default_currency")
-
-	# ============================================================
-	# ✅ FIX: Convert transport cost based on custom_lcv_currency
-	# ============================================================
-	if transport_currency == company_currency:
-		# Transport already in company currency (e.g., UZS → UZS)
-		# No conversion needed
-		transport_amount_company = transport_cost
-
-		frappe.logger().debug(
-			f"Transport LCV: No conversion needed. "
-			f"Amount: {transport_cost} {transport_currency}"
-		)
-	else:
-		# Transport needs conversion (e.g., UZS → USD or USD → UZS)
-		transport_amount_company = convert_to_company_currency(
-			amount=transport_cost,
-			from_currency=transport_currency,
-			to_currency=company_currency,
-			conversion_rate=lcv_exchange_rate
-		)
-
-		frappe.logger().debug(
-			f"Transport LCV: Converted {transport_cost} {transport_currency} → "
-			f"{transport_amount_company} {company_currency} (Rate: {lcv_exchange_rate})"
-		)
-
-	# Create Transport LCV
-	lcv_name = create_transport_lcv(
-		doc=doc,
-		pr_list=pr_list,
-		transport_amount=transport_amount_company,  # Already converted
-		original_amount=transport_cost,
-		original_currency=transport_currency,  # ✅ From custom_lcv_currency
-		exchange_rate=lcv_exchange_rate
-	)
-
-	if lcv_name:
-		# Success message already shown by create_transport_lcv
-		pass
+	run_transport_pipeline(doc)
 def _cancel_linked_lcvs(doc, method):
 	"""
 	Cancel all Landed Cost Vouchers linked to this Purchase Invoice.

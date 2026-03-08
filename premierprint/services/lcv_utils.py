@@ -190,40 +190,63 @@ def get_stock_received_but_not_billed_account(company):
 
 def get_transport_expense_account(company):
 	"""
-	Transport xarajat hisobini topish.
+	Return the "Expenses Included In Valuation - {abbr}" account for the company.
+
+	Lookup strategy (most reliable first):
+	  1. Use ERPNext's built-in Company field 'expenses_included_in_valuation' if set.
+	  2. Construct the canonical name: "Expenses Included In Valuation - {abbr}"
+	     and verify it exists in the Account master.
+	  3. Fall back to account_type = "Expense Account" with LIKE search.
+	  4. Hard-throw — never return a wrong account silently.
+
+	CRITICAL: This account MUST be used for BOTH the Carrier PI item and the LCV
+	          applicable charges row. Using any other account breaks stock valuation.
 	"""
-	# Aniq nom bo'yicha
+	# 1. Company master field (fastest, most reliable)
+	account = frappe.get_cached_value("Company", company, "expenses_included_in_valuation")
+	if account and frappe.db.exists("Account", account):
+		return account
+
+	# 2. Canonical name lookup using company abbreviation
+	abbr = frappe.get_cached_value("Company", company, "abbr")
+	if abbr:
+		canonical_name = "Expenses Included In Valuation - {}".format(abbr)
+		if frappe.db.exists("Account", canonical_name):
+			return canonical_name
+
+	# 3. account_name exact match + company filter (covers renamed accounts)
 	account = frappe.db.get_value(
 		"Account",
 		filters={
-			"account_name": "Transport Xarajati (LCV)",
+			"account_name": "Expenses Included In Valuation",
 			"company": company,
 			"is_group": 0,
-			"disabled": 0
+			"disabled": 0,
 		},
-		fieldname="name"
+		fieldname="name",
 	)
-
 	if account:
 		return account
 
-	# Kalit so'z bo'yicha
+	# 4. account_type fallback (last resort — account may have been renamed)
 	account = frappe.db.get_value(
 		"Account",
 		filters={
-			"account_name": ["like", "%Transport%"],
-			"account_type": ["in", ["Expense Included In Valuation", "Direct Expense"]],
+			"account_type": "Expense Account",
+			"account_name": ["like", "%Expenses Included%"],
 			"company": company,
 			"is_group": 0,
-			"disabled": 0
+			"disabled": 0,
 		},
 		fieldname="name",
-		order_by="creation desc"
+		order_by="creation asc",
 	)
-
 	if account:
 		return account
 
 	frappe.throw(
-		_("Transport xarajat hisobi topilmadi. 'Transport Xarajati (LCV)' nomli hisob yarating.")
+		_(
+			"'Expenses Included In Valuation' account not found for company '{0}'. "
+			"Verify it exists in Chart of Accounts or set it in Company > Default Accounts."
+		).format(company)
 	)

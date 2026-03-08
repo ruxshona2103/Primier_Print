@@ -18,6 +18,7 @@
   "section_break_transfer",
   "kassa_to",
   "cash_account_to",
+  "currency",
   "column_break_transfer",
   "balance_to",
   "section_break_conversion",
@@ -95,16 +96,15 @@
    "fieldname": "company",
    "fieldtype": "Link",
    "label": "\u041a\u043e\u043c\u043f\u0430\u043d\u0438\u044f",
-   "reqd": 1,
-   "options": "Company"
+   "options": "Company",
+   "reqd": 1
   },
   {
    "fieldname": "kassa",
    "fieldtype": "Link",
    "label": "Kassa",
    "options": "Account",
-   "reqd": 1,
-   "get_query": "function() { return { query: 'premierprint.kassa.kassa.get_kassa_accounts', filters: { company: frm.doc.company } }; }"
+   "reqd": 1
   },
   {
    "depends_on": "eval:in_list(['\u041f\u0435\u0440\u0435\u043c\u0435\u0449\u0435\u043d\u0438\u044f', '\u041a\u043e\u043d\u0432\u0435\u0440\u0442\u0430\u0446\u0438\u044f'], doc.transaction_type)",
@@ -117,9 +117,8 @@
    "fieldname": "kassa_to",
    "fieldtype": "Link",
    "label": "Kassa (\u043a\u0443\u0434\u0430)",
-   "options": "Account",
    "mandatory_depends_on": "eval:in_list(['\u041f\u0435\u0440\u0435\u043c\u0435\u0449\u0435\u043d\u0438\u044f', '\u041a\u043e\u043d\u0432\u0435\u0440\u0442\u0430\u0446\u0438\u044f'], doc.transaction_type)",
-   "get_query": "function() { return { query: 'premierprint.kassa.kassa.get_kassa_accounts_to', filters: { company: frm.doc.company } }; }"
+   "options": "Account"
   },
   {
    "fieldname": "cash_account_to",
@@ -141,7 +140,6 @@
    "read_only": 1
   },
   {
-   "depends_on": "eval:doc.transaction_type === '\u041a\u043e\u043d\u0432\u0435\u0440\u0442\u0430\u0446\u0438\u044f'",
    "fieldname": "section_break_conversion",
    "fieldtype": "Section Break",
    "label": "\u041a\u043e\u043d\u0432\u0435\u0440\u0442\u0430\u0446\u0438\u044f"
@@ -265,12 +263,18 @@
    "options": "Kassa",
    "print_hide": 1,
    "read_only": 1
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency"
   }
  ],
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-02-23 08:02:40.969205",
+ "modified": "2026-02-27 22:11:15.240582",
  "modified_by": "Administrator",
  "module": "PremierPrint",
  "name": "Kassa",
