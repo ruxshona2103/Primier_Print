@@ -81,15 +81,18 @@ def on_submit(doc, method):
 	try:
 		_handle_transport_lcv_creation(doc)
 	except Exception as e:
-		# Log error but don't block PI submission
+		# Xatolikni log ga yoz VA foydalanuvchiga ko'rsat
+		traceback = frappe.get_traceback()
 		frappe.log_error(
-			message=frappe.get_traceback(),
+			message=traceback,
 			title=f"Transport LCV Creation Failed for PI: {doc.name}"
 		)
+		# Serverda ham ko'rinishi uchun to'liq xatolikni ko'rsat
 		frappe.msgprint(
-			_("Transport LCV creation failed: {0}<br>Purchase Invoice submitted successfully, but please create LCV manually.").format(str(e)),
-			indicator="orange",
-			alert=True
+			_("Transport LCV/PI yaratishda xatolik: {0}").format(str(e)),
+			indicator="red",
+			alert=True,
+			title=_("Transport Xarajati Xatoligi")
 		)
 
 
@@ -119,13 +122,21 @@ def on_cancel(doc, method):
 
 def _handle_transport_lcv_creation(doc):
 	"""
-	Delegate the full transport pipeline (Carrier PI + LCV) to run_transport_pipeline().
-	All currency conversion, duplicate guards, and submission logic live there.
-
-	Args:
-		doc: Purchase Invoice document
+	run_transport_pipeline() ga yo'naltiradi.
+	Barcha logika transport_lcv.py da.
 	"""
-	run_transport_pipeline(doc)
+	# custom_transport_cost > 0 bo'lmasa — jimgina chiqib ket
+	if flt(doc.get("custom_transport_cost")) <= 0:
+		return
+
+	# Barcha logikani run_transport_pipeline ga topshir
+	result = run_transport_pipeline(doc)
+
+	if result:
+		frappe.logger().info(
+			f"Transport pipeline OK — PI: {doc.name} | "
+			f"Carrier PI: {result.get('carrier_pi')} | LCV: {result.get('lcv')}"
+		)
 def _cancel_linked_lcvs(doc, method):
 	"""
 	Cancel all Landed Cost Vouchers linked to this Purchase Invoice.

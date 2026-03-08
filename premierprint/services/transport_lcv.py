@@ -115,9 +115,22 @@ def run_transport_pipeline(doc):
         exchange_rate=lcv_exchange_rate,
     )
 
-    # Step 3: Store Carrier PI reference on original PI
-    frappe.db.set_value("Purchase Invoice", doc.name, "custom_transport_pi", carrier_pi_name)
-    frappe.db.commit()
+    # Step 3: Store Carrier PI reference on original PI (agar field mavjud bo'lsa)
+    # custom_transport_pi field fixtures orqali deploy qilinmagan serverlarda yo'q bo'lishi mumkin
+    try:
+        # Field mavjudligini tekshir
+        field_exists = frappe.db.get_value(
+            "Custom Field",
+            {"dt": "Purchase Invoice", "fieldname": "custom_transport_pi"},
+            "name"
+        )
+        if field_exists:
+            frappe.db.set_value("Purchase Invoice", doc.name, "custom_transport_pi", carrier_pi_name)
+            frappe.db.commit()
+    except Exception:
+        frappe.logger().warning(
+            f"custom_transport_pi field not found — skipping. Carrier PI: {carrier_pi_name}"
+        )
 
     frappe.msgprint(
         _("Transport pipeline complete — Carrier PI: {0} | LCV: {1}").format(
