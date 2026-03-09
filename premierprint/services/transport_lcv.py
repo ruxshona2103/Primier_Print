@@ -55,17 +55,8 @@ def run_transport_pipeline(doc):
     if transport_cost <= 0:
         return None  # Nothing to do - silent exit
 
-    # Duplicate guard
-    existing_carrier_pi = doc.get("custom_transport_pi")
-    if existing_carrier_pi and frappe.db.exists("Purchase Invoice", existing_carrier_pi):
-        frappe.msgprint(
-            _("Transport PI {0} already exists for this Purchase Invoice. Skipping.").format(
-                frappe.bold(existing_carrier_pi)
-            ),
-            indicator="blue",
-            alert=True,
-        )
-        return None
+    # Duplicate guard — custom_transport_pi PI da yo'q, shuning uchun LCV orqali tekshiramiz
+    # (validate_transport_lcv_creation ichida existing LCV check bor)
 
     # Fetch shared parameters
     transport_currency = doc.get("custom_lcv_currency")
@@ -115,22 +106,7 @@ def run_transport_pipeline(doc):
         exchange_rate=lcv_exchange_rate,
     )
 
-    # Step 3: Store Carrier PI reference on original PI (agar field mavjud bo'lsa)
-    # custom_transport_pi field fixtures orqali deploy qilinmagan serverlarda yo'q bo'lishi mumkin
-    try:
-        # Field mavjudligini tekshir
-        field_exists = frappe.db.get_value(
-            "Custom Field",
-            {"dt": "Purchase Invoice", "fieldname": "custom_transport_pi"},
-            "name"
-        )
-        if field_exists:
-            frappe.db.set_value("Purchase Invoice", doc.name, "custom_transport_pi", carrier_pi_name)
-            frappe.db.commit()
-    except Exception:
-        frappe.logger().warning(
-            f"custom_transport_pi field not found — skipping. Carrier PI: {carrier_pi_name}"
-        )
+    # Step 3: custom_transport_pi field PI da mavjud emas — skip
 
     frappe.msgprint(
         _("Transport pipeline complete — Carrier PI: {0} | LCV: {1}").format(
@@ -302,12 +278,11 @@ def create_transport_lcv(doc, pr_list, transport_amount, original_amount, origin
     if not doc.items:
         frappe.throw(_("Purchase Invoice has no items to allocate transport cost."))
 
-    # Duplicate guard
+    # Duplicate guard — faqat custom_purchase_invoice ishlatiladi (custom_lcv_type LCV da yo'q)
     existing_lcv = frappe.db.exists(
         "Landed Cost Voucher",
         {
             "custom_purchase_invoice": doc.name,
-            "custom_lcv_type": "Transport",
             "docstatus": ["!=", 2],
         },
     )
@@ -328,7 +303,6 @@ def create_transport_lcv(doc, pr_list, transport_amount, original_amount, origin
     lcv.company = doc.company
     lcv.posting_date = nowdate()
     lcv.custom_purchase_invoice = doc.name
-    lcv.custom_lcv_type = "Transport"
     lcv.distribute_charges_based_on = _map_allocation_method(
         doc.get("custom_lcv_taqsimlash_usuli")
     )
@@ -428,7 +402,6 @@ def validate_transport_lcv_creation(doc):
         "Landed Cost Voucher",
         {
             "custom_purchase_invoice": doc.name,
-            "custom_lcv_type": "Transport",
             "docstatus": ["!=", 2],
         },
     )
@@ -695,7 +668,6 @@ def get_transport_lcv_summary(lcv_name):
     return {
         "name": lcv.name,
         "company": lcv.company,
-        "lcv_type": lcv.get("custom_lcv_type"),
         "purchase_invoice": lcv.get("custom_purchase_invoice"),
         "total_charges": sum(flt(t.amount) for t in lcv.taxes),
         "allocation_method": lcv.distribute_charges_based_on,
