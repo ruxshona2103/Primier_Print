@@ -180,6 +180,9 @@ frappe.ui.form.on("Asosiy panel", {
 
     company(frm) {
         frm.trigger("setup_queries");
+        frm.set_value('sales_order', '');
+        frm.set_value('sales_order_item', '');
+        frm.set_value('finished_good', '');
         // Clear warehouses when company changes and reset defaults
         frm.set_value('from_warehouse', '');
         frm.set_value('to_warehouse', '');
@@ -385,18 +388,17 @@ frappe.ui.form.on("Asosiy panel", {
             }
 
             // ============================================================
-            // SUPPLIER LOGIC - For production, usluga_po_zakasu
+            // SUPPLIER LOGIC - only for service cost operation
             // ============================================================
-            if (['Производство', 'Услуги по заказу'].includes(frm.doc.operation_type)) {
+            if (frm.doc.operation_type === 'Услуги по заказу') {
                 frm.toggle_display('supplier', true);
             }
 
             // Supplier is MANDATORY for service operations (Purchase Invoice creation)
             if (frm.doc.operation_type === 'Услуги по заказу') {
                 frm.toggle_reqd('supplier', true);
-            } else if (frm.doc.operation_type === 'Производство') {
-                // Supplier is optional for production (for reference only)
-                frm.toggle_reqd('supplier', false);
+            } else if (frm.doc.supplier) {
+                frm.set_value('supplier', '');
             }
 
             // ============================================================
@@ -685,16 +687,18 @@ frappe.ui.form.on("Asosiy panel", {
         // Sales Order query - show customer name (like Stock Entry)
         frm.set_query("sales_order", function () {
             return {
-                query: "premierprint.utils.stock_entry.get_sales_order_query",
-                filters: {}
+                filters: {
+                    company: frm.doc.company || '',
+                    docstatus: 1
+                }
             };
         });
 
         // Sales Order Item query - Use custom function to bypass permissions
         frm.set_query("sales_order_item", function () {
-            if (!frm.doc.sales_order) {
+            if (!frm.doc.company || !frm.doc.sales_order) {
                 frappe.show_alert({
-                    message: __('Please select Sales Order first'),
+                    message: __('Please select Company and Sales Order first'),
                     indicator: 'orange'
                 });
                 return { filters: { name: ['=', ''] } };
@@ -702,6 +706,7 @@ frappe.ui.form.on("Asosiy panel", {
             return {
                 query: "premierprint.premierprint.doctype.asosiy_panel.asosiy_panel.get_so_items",
                 filters: {
+                    company: frm.doc.company,
                     sales_order: frm.doc.sales_order
                 }
             };
@@ -709,9 +714,6 @@ frappe.ui.form.on("Asosiy panel", {
     },
     sales_order(frm) {
         // Clear sales_order_item and finished_good when sales_order changes (like Stock Entry)
-        if (!frm.doc.sales_order) {
-            frm.set_value("sales_order_item", "");
-        }
         frm.set_value("sales_order_item", "");
         frm.set_value("finished_good", "");
         // Clear items table when sales_order changes in production mode
