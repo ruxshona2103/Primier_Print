@@ -1843,7 +1843,7 @@ def get_all_costs_for_production(sales_order_item, wip_warehouse, company=None):
         WHERE pi.docstatus = 1
             AND pii.custom_sales_order = %(sales_order)s
             AND pii.custom_sales_order_item = %(sales_order_item)s
-            AND pii.update_stock = 0
+            AND pi.update_stock = 0
         ORDER BY pi.posting_date, pi.name
     """
     
