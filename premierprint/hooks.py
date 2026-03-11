@@ -5,25 +5,27 @@ app_description = "Premier Print"
 app_email = "munisabax2002@gmail.com"
 app_license = "mit"
 
+PREMIERPRINT_MODULE = "premierprint"
+
 fixtures = [
 	# 1. UI va Formalar Dizayni (Eng asosiysi)
 	{
 		"dt": "Property Setter",
 		"filters": [
-			["module", "=", "PremierPrint"]
+			["module", "=", PREMIERPRINT_MODULE]
 		]
 	},
 	{
 		"dt": "Custom Field",
 		"filters": [
-			["module", "=", "PremierPrint"]
+			["module", "=", PREMIERPRINT_MODULE]
 		]
 	},
 	# 2. Skriptlar va Logika
 	# {
 	# 	"dt": "Client Script",
 	# 	"filters": [
-	# 		["module", "=", "PremierPrint"]
+	# 		["module", "=", PREMIERPRINT_MODULE]
 	# 	]
 	# },
 	# 3. Ruxsatlar (Permissions)
@@ -34,7 +36,7 @@ fixtures = [
 	},
 	{
 		"dt": "Role Permission for Page and Report",
-		"filters": [["module", "=", "PremierPrint"]
+		"filters": [["module", "=", PREMIERPRINT_MODULE]
 		]
 	},
 
@@ -56,7 +58,7 @@ fixtures = [
 	# 5. Print Format (Agar sizda maxsus chek dizaynlari bo'lsa)
 	{
 		"dt": "Print Format",
-		"filters": [["module", "=", "PremierPrint"],
+		"filters": [["module", "=", PREMIERPRINT_MODULE],
 			["standard", "=", "No"]  # Faqat standart bo'lmaganlarini oladi
 		]
 	}
