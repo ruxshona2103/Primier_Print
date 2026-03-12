@@ -167,7 +167,7 @@ def convert_to_company_currency(amount, from_currency, to_currency, conversion_r
 
 def get_stock_received_but_not_billed_account(company):
 	"""
-	Stock Received But Not Billed hisobini topish.
+	Expenses Included In Valuation hisobini topish.
 	Bu funksiya sizda YETISHMAYOTGAN edi.
 	"""
 	# 1. Kompaniya sozlamalaridan olish
@@ -176,14 +176,14 @@ def get_stock_received_but_not_billed_account(company):
 	# 2. Agar u yerda bo'lmasa, taxminiy qidirish (Fallback)
 	if not account:
 		account = frappe.db.get_value("Account", {
-			"account_name": "Stock Received But Not Billed",
+			"account_name": "Expenses Included In Valuation",
 			"company": company,
 			"is_group": 0
 		}, "name")
 
 	if not account:
 		frappe.throw(
-			_("Kompaniya sozlamalarida 'Stock Received But Not Billed' hisobi topilmadi. Iltimos, Company sozlamalarini tekshiring.")
+			_("Kompaniya sozlamalarida 'Expenses Included In Valuation' hisobi topilmadi. Iltimos, Company sozlamalarini tekshiring.")
 		)
 
 	return account
