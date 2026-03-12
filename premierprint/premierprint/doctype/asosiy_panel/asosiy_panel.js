@@ -8,9 +8,28 @@
 // Услуги по заказу → Service cost logging
 // Производство → Repack Stock Entry (Aggregator)
 
+const PURCHASE_RECEIPT_OPERATION = "Приход на склад";
+
+function normalize_operation_type(value) {
+    return String(value || "")
+        .trim()
+        .replace(/A/g, "А")
+        .replace(/a/g, "а");
+}
+
+function is_purchase_receipt_operation(value) {
+    return normalize_operation_type(value) === PURCHASE_RECEIPT_OPERATION;
+}
+
 frappe.ui.form.on("Asosiy panel", {
+    onload(frm) {
+        frm._last_operation_type = normalize_operation_type(frm.doc.operation_type);
+    },
+
     refresh(frm) {
         console.log("🔄 UI Refresh started for operation:", frm.doc.operation_type || "NOT SET");
+
+        frm._last_operation_type = normalize_operation_type(frm.doc.operation_type);
 
         frm.trigger("setup_queries");
         frm.trigger("toggle_ui");
@@ -40,8 +59,8 @@ frappe.ui.form.on("Asosiy panel", {
         }
 
         // Robust string comparison with trim and type coercion
-        let operation_type = String(frm.doc.operation_type || "").trim();
-        let is_purchase_receipt = operation_type === "Приход на склад";
+        let operation_type = normalize_operation_type(frm.doc.operation_type);
+        let is_purchase_receipt = is_purchase_receipt_operation(operation_type);
         let is_draft = frm.doc.docstatus === 0;
 
         console.log("🔍 DEBUG - Operation Type:", operation_type);
@@ -195,12 +214,25 @@ frappe.ui.form.on("Asosiy panel", {
         }
     },
     operation_type(frm) {
-        // Clear all operation-specific fields when type changes
-        frm.trigger("clear_operation_fields");
+        const current_operation_type = normalize_operation_type(frm.doc.operation_type);
+        const previous_operation_type = normalize_operation_type(frm._last_operation_type);
+        const is_manual_change = Boolean(previous_operation_type)
+            && current_operation_type !== previous_operation_type
+            && frm.is_dirty();
+
+        if (is_manual_change) {
+            frm.trigger("clear_operation_fields");
+        }
+
+        frm._last_operation_type = current_operation_type;
         frm.trigger("toggle_ui");
-        // Refresh form to update buttons based on new operation type
-        frm.refresh();
+        frm.trigger("render_custom_buttons");
     },
+
+    before_save(frm) {
+        console.log("Supplier value before save:", frm.doc.supplier);
+    },
+
     clear_operation_fields(frm) {
         // Reset all fields that depend on operation_type
         frm.set_value("sales_order", "");
@@ -397,8 +429,6 @@ frappe.ui.form.on("Asosiy panel", {
             // Supplier is MANDATORY for service operations (Purchase Invoice creation)
             if (frm.doc.operation_type === 'Услуги по заказу') {
                 frm.toggle_reqd('supplier', true);
-            } else if (frm.doc.supplier) {
-                frm.set_value('supplier', '');
             }
 
             // ============================================================
@@ -431,7 +461,7 @@ frappe.ui.form.on("Asosiy panel", {
             // ============================================================
             // PURCHASE RECEIPT LOGIC
             // ============================================================
-            if (frm.doc.operation_type === 'Приход на склад') {
+            if (is_purchase_receipt_operation(frm.doc.operation_type)) {
                 // Visibility — show currency AND exchange_rate for proper multi-currency support
                 frm.toggle_display(['supplier', 'from_warehouse', 'currency', 'exchange_rate', 'items'], true);
 
