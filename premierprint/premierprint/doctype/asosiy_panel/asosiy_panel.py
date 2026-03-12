@@ -15,11 +15,19 @@ TYPE_MAP = {
     "Производство": "Production Repack",
 }
 
+PURCHASE_RECEIPT_OPERATION = "Приход на склад"
+
+
+def normalize_operation_type(value):
+    return (value or "").strip().replace("A", "А").replace("a", "а")
+
 class Asosiypanel(Document):
     def validate(self):
         """Validate document before saving."""
+        operation_type = normalize_operation_type(self.operation_type)
+
         # Validations for production operations
-        if self.operation_type == 'Производство':
+        if operation_type == 'Производство':
             if not self.finished_good:
                 frappe.throw(_("Finished Good is required for Production"))
             if not self.production_qty or self.production_qty <= 0:
@@ -30,7 +38,7 @@ class Asosiypanel(Document):
                 frappe.throw(_("To Warehouse (Finished Goods Store) is required for Production"))
         
         # Validations for usluga_po_zakasu (service logging)
-        if self.operation_type == 'Услуги по заказу':
+        if operation_type == 'Услуги по заказу':
             if not self.supplier:
                 frappe.throw(_("Supplier is required for Service Order operations"))
             if not self.finished_good:
@@ -43,26 +51,41 @@ class Asosiypanel(Document):
             self._validate_currency_and_exchange_rate()
         
         # Validations for rasxod_po_zakasu (material transfer to WIP)
-        if self.operation_type == 'Расход по заказу':
+        if operation_type == 'Расход по заказу':
             if not self.from_warehouse:
                 frappe.throw(_("From Warehouse (Main Store) is required for Rasxod"))
             if not self.to_warehouse:
                 frappe.throw(_("To Warehouse (WIP) is required for Rasxod"))
         
         # Sales Order is required for all 3 production-related operations
-        if self.operation_type in ['Производство', 'Расход по заказу', 'Услуги по заказу']:
+        if operation_type in ['Производство', 'Расход по заказу', 'Услуги по заказу']:
             if not self.sales_order:
                 frappe.throw(_("Sales Order is required for this operation type"))
 
-        if self.operation_type == "Запрос материалов":
+        if operation_type == "Запрос материалов":
             self._validate_material_request()
 
-        if self.operation_type == "Приход на склад":
+        if operation_type == PURCHASE_RECEIPT_OPERATION:
             self._validate_purchase_receipt()
         
         # Inter-Company Price List validation for delivery_note
-        if self.operation_type == 'Отгрузка товаров' and self.customer:
+        if operation_type == 'Отгрузка товаров' and self.customer:
             self._validate_inter_company_price_list()
+
+    def before_save(self):
+        operation_type = normalize_operation_type(self.operation_type)
+        if operation_type != PURCHASE_RECEIPT_OPERATION:
+            return
+
+        if self.supplier:
+            return
+
+        if self.is_new():
+            return
+
+        previous_supplier = frappe.db.get_value(self.doctype, self.name, "supplier")
+        if previous_supplier:
+            self.supplier = previous_supplier
 
     def _validate_material_request(self):
         if not self.from_warehouse:
