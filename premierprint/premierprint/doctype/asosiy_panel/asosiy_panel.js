@@ -21,6 +21,11 @@ function is_purchase_receipt_operation(value) {
     return normalize_operation_type(value) === PURCHASE_RECEIPT_OPERATION;
 }
 
+function should_use_valuation_rate(frm) {
+    return normalize_operation_type(frm.doc.operation_type) === "Отгрузка товаров"
+        && Boolean(frm.doc.target_company);
+}
+
 frappe.ui.form.on("Asosiy panel", {
     onload(frm) {
         frm._last_operation_type = normalize_operation_type(frm.doc.operation_type);
@@ -260,6 +265,12 @@ frappe.ui.form.on("Asosiy panel", {
                     // Allow manual price_list selection for non-internal customers
                     frm.set_df_property("price_list", "read_only", 0);
                 }
+                
+                // Fetch rates based on the new conditions
+                if (should_use_valuation_rate(frm)) {
+                    refetch_item_rates(frm);
+                }
+                
                 frm.trigger("toggle_ui");
                 frm.trigger("setup_queries");
             });
@@ -267,6 +278,10 @@ frappe.ui.form.on("Asosiy panel", {
             // Customer cleared - reset price_list and allow manual selection
             frm.set_value("target_company", "");
             frm.set_df_property("price_list", "read_only", 0);
+            
+            if (frm.doc.operation_type === 'Отгрузка товаров') {
+                 refetch_item_rates(frm);
+            }
             frm.trigger("toggle_ui");
         }
     },
@@ -307,6 +322,10 @@ frappe.ui.form.on("Asosiy panel", {
             if (frm.doc.sales_order_item) {
                 frm.trigger('fetch_production_data');
             }
+        }
+        
+        if (should_use_valuation_rate(frm)) {
+            refetch_item_rates(frm);
         }
     },
     set_warehouse_filters(frm) {
@@ -396,11 +415,11 @@ frappe.ui.form.on("Asosiy panel", {
             // DELIVERY NOTE LOGIC - Full Inter-Company Support
             // ============================================================
             if (frm.doc.operation_type === 'Отгрузка товаров') {
-                // Always show customer, currency, exchange_rate, price_list, from_warehouse
-                frm.toggle_display(['customer', 'currency', 'exchange_rate', 'price_list', 'from_warehouse'], true);
+                // Dynamic Visibility: Show all relevant fields for inter-company transfer
+                frm.toggle_display(['customer', 'target_company', 'from_warehouse', 'target_warehouse', 'currency', 'exchange_rate', 'price_list', 'payment_due_date', 'items', 'total_quantity', 'total_amount'], true);
                 frm.toggle_reqd(['customer', 'currency', 'price_list', 'from_warehouse'], true);
 
-                // Show target_company (read-only, auto-filled from internal customer)
+                // For internal customers, make target_company visible
                 frm.toggle_display('target_company', true);
 
                 // target_warehouse ONLY shown when internal customer is selected
@@ -998,20 +1017,7 @@ frappe.ui.form.on('Asosiy panel item', {
     item_code: function (frm, cdt, cdn) {
         let row = locals[cdt][cdn];
         if (row.item_code) {
-            // Fetch item details including is_stock_item
-            frappe.db.get_value('Item', row.item_code, ['item_name', 'is_stock_item', 'stock_uom'], (r) => {
-                if (r) {
-                    frappe.model.set_value(cdt, cdn, 'item_name', r.item_name);
-                    frappe.model.set_value(cdt, cdn, 'is_stock_item', r.is_stock_item);
-                    if (!row.uom) {
-                        frappe.model.set_value(cdt, cdn, 'uom', r.stock_uom);
-                    }
-                }
-            });
-            // Fetch rate from Price List if price_list and currency are set
-            if (frm.doc.price_list && frm.doc.currency) {
-                fetch_and_set_rate(frm, cdt, cdn);
-            }
+            fetch_and_set_rate(frm, cdt, cdn);
         }
     },
     qty: function (frm, cdt, cdn) {
@@ -1033,9 +1039,51 @@ function calculate_row_amount(frm, cdt, cdn) {
     frappe.model.set_value(cdt, cdn, 'amount', amount);
 }
 
+function refetch_item_rates(frm) {
+    if (frm.doc.items) {
+        frm.doc.items.forEach(row => {
+            if (row.item_code) {
+                fetch_and_set_rate(frm, row.doctype, row.name);
+            }
+        });
+    }
+}
+
 function fetch_and_set_rate(frm, cdt, cdn) {
     let row = locals[cdt][cdn];
-    if (!row.item_code || !frm.doc.price_list || !frm.doc.currency) return;
+    if (!row.item_code) return;
+
+    if (should_use_valuation_rate(frm)) {
+        if (!frm.doc.company || !frm.doc.from_warehouse) return;
+
+        frappe.call({
+            method: 'premierprint.premierprint.doctype.asosiy_panel.asosiy_panel.get_item_valuation_rate',
+            args: {
+                item_code: row.item_code,
+                warehouse: frm.doc.from_warehouse,
+                posting_date: frm.doc.posting_date,
+                posting_time: frm.doc.posting_time
+            },
+            callback: function (r) {
+                if (r.message !== undefined && r.message !== null) {
+                    let rate = flt(r.message);
+                    frappe.model.set_value(cdt, cdn, 'rate', rate);
+                    calculate_row_amount(frm, cdt, cdn);
+                    frm.trigger('calculate_totals');
+                    
+                    // Make rate read-only for exact stock valuation
+                    let grid_row = frm.fields_dict.items.grid.get_row(cdn);
+                    if (grid_row) {
+                        grid_row.toggle_editable('rate', false);
+                    }
+                }
+            }
+        });
+
+        return;
+    }
+
+    if (!frm.doc.price_list || !frm.doc.currency) return;
 
     frappe.call({
         method: 'premierprint.premierprint.doctype.asosiy_panel.asosiy_panel.get_any_available_price',
