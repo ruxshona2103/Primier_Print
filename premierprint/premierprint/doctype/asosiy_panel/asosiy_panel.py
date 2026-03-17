@@ -1392,8 +1392,8 @@ def get_production_data(sales_order, sales_order_item, wip_warehouse, finished_g
         
     Returns:
         dict: {
-            'materials': [...],   # WIP materials with is_wip_item=1
-            'services': [...],    # Service items with is_wip_item=0
+            'materials': [...],   # WIP materials with is_wip_material=1
+            'services': [...],    # Service items with is_wip_material=0
             'total_material_cost': float,
             'total_service_cost': float
         }
@@ -1920,3 +1920,18 @@ def get_all_costs_for_production(sales_order_item, wip_warehouse, company=None):
         'has_data': len(materials) > 0 or len(services) > 0,
         'company_currency': company_currency
     }
+
+@frappe.whitelist()
+def get_item_valuation_rate(item_code, warehouse, posting_date=None, posting_time=None):
+    from frappe.utils import flt
+    
+    if not item_code or not warehouse:
+        return 0.0
+    
+    # Primary: Directly query the Stock Ledger Entry table for the EXACT and latest entry
+    # This automatically includes all Landed Costs and Revaluations historically saved 
+    rate = frappe.db.get_value("Stock Ledger Entry", 
+        {"item_code": item_code, "warehouse": warehouse, "is_cancelled": 0}, 
+        "valuation_rate", order_by="posting_date desc, posting_time desc, creation desc")
+        
+    return flt(rate) if rate else 0.0
